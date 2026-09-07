@@ -54,6 +54,10 @@ func (s *Server) handle(response http.ResponseWriter, request *http.Request) {
 	s.mu.Lock()
 	s.requests = append(s.requests, Request{Path: request.URL.Path, Body: append([]byte(nil), body...)})
 	s.mu.Unlock()
+	if request.URL.Path == "/v1/chat/completions" {
+		writeChatCompletion(response)
+		return
+	}
 	var value any
 	switch request.URL.Path {
 	case "/v1/responses":
@@ -70,5 +74,31 @@ func (s *Server) handle(response http.ResponseWriter, request *http.Request) {
 	}
 	if err := json.NewEncoder(response).Encode(value); err != nil {
 		http.Error(response, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func writeChatCompletion(response http.ResponseWriter) {
+	response.Header().Set("Content-Type", "text/event-stream")
+	flusher, _ := response.(http.Flusher)
+	chunks := []map[string]any{
+		{"id": "chatcmpl-mock", "object": "chat.completion.chunk", "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": "hi"}}}},
+		{"id": "chatcmpl-mock", "object": "chat.completion.chunk", "choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}, "usage": map[string]any{"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3}},
+	}
+	for _, chunk := range chunks {
+		encoded, err := json.Marshal(chunk)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if _, err := response.Write([]byte("data: " + string(encoded) + "\n\n")); err != nil {
+			return
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	_, _ = response.Write([]byte("data: [DONE]\n\n"))
+	if flusher != nil {
+		flusher.Flush()
 	}
 }
