@@ -78,3 +78,39 @@ func TestParserReadsPiLifecycleEvents(t *testing.T) {
 		t.Fatalf("tool event = %+v", result.Events[3])
 	}
 }
+
+func TestParserReadsPiAgentTurnCompaction(t *testing.T) {
+	input := strings.NewReader(`{"type":"session","id":"s1"}
+{"type":"agent_start","session_id":"s1"}
+{"type":"turn_start","session_id":"s1"}
+{"type":"message_end","session_id":"s1","message":{"role":"assistant","model":"gpt-5","usage":{"input":3,"output":1,"cacheRead":2,"reasoning":4}}}
+{"type":"tool_execution_start","session_id":"s1","toolCallId":"c1","toolName":"bash"}
+{"type":"tool_execution_end","session_id":"s1","toolCallId":"c1","toolName":"bash","isError":true,"stderr":"boom"}
+{"type":"compaction_end","session_id":"s1"}
+{"type":"turn_end","session_id":"s1"}
+{"type":"agent_end","session_id":"s1"}
+`)
+	result, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Events) != 9 {
+		t.Fatalf("event count = %d, want 9", len(result.Events))
+	}
+	session, agent, turn, llm, toolStart, toolEnd, compaction := result.Events[0], result.Events[1], result.Events[2], result.Events[3], result.Events[4], result.Events[5], result.Events[6]
+	if agent.Kind != model.KindAgent || agent.ParentID != session.ID {
+		t.Fatalf("agent = %+v", agent)
+	}
+	if turn.Kind != model.KindTurn || turn.ParentID != agent.ID {
+		t.Fatalf("turn = %+v", turn)
+	}
+	if llm.Kind != model.KindLLM || llm.ParentID != turn.ID || llm.ReasoningTokens != 4 || llm.CacheReadTokens != 2 {
+		t.Fatalf("llm = %+v", llm)
+	}
+	if toolStart.ID != "c1" || toolEnd.ID != "c1" || toolEnd.Error != "boom" || toolStart.ParentID != turn.ID {
+		t.Fatalf("tools = %+v %+v", toolStart, toolEnd)
+	}
+	if compaction.Kind != model.KindCompaction || compaction.ParentID != turn.ID {
+		t.Fatalf("compaction = %+v", compaction)
+	}
+}

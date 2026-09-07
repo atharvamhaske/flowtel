@@ -26,6 +26,15 @@ type Parser struct {
 	BestEffort bool
 }
 
+type parseState struct {
+	sessionID  string
+	agentID    string
+	turnID     string
+	lastLLM    string
+	turnSeq    int
+	compactSeq int
+}
+
 func NewParser(profile model.Profile, bestEffort bool) Parser {
 	return Parser{Profile: profile, BestEffort: bestEffort}
 }
@@ -42,7 +51,7 @@ func (p Parser) Parse(ctx context.Context, input io.Reader) (Result, error) {
 	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
 	result := Result{}
 	lineNumber := 0
-	var sessionID string
+	state := &parseState{}
 	for scanner.Scan() {
 		lineNumber++
 		select {
@@ -59,16 +68,8 @@ func (p Parser) Parse(ctx context.Context, input io.Reader) (Result, error) {
 			result.Audit = append(result.Audit, p.failureRecord(lineNumber))
 			continue
 		}
-		if sessionID == "" {
-			sessionID = stringValue(entry, "sessionId")
-			if sessionID == "" {
-				sessionID = stringValue(entry, "session_id")
-			}
-			if sessionID == "" && stringValue(entry, "type") == "session" {
-				sessionID = stringValue(entry, "id")
-			}
-		}
-		events := p.eventsFromEntry(entry, sessionID, lineNumber)
+		state.rememberSession(entry)
+		events := p.eventsFromEntry(entry, state, lineNumber)
 		result.Events = append(result.Events, events...)
 	}
 	if err := scanner.Err(); err != nil {
@@ -77,55 +78,89 @@ func (p Parser) Parse(ctx context.Context, input io.Reader) (Result, error) {
 	return result, nil
 }
 
-func (p Parser) eventsFromEntry(entry map[string]any, sessionID string, lineNumber int) []model.Event {
+func (p Parser) eventsFromEntry(entry map[string]any, state *parseState, lineNumber int) []model.Event {
 	id := stringValue(entry, "id")
 	if id == "" {
 		id = "line-" + strconv.Itoa(lineNumber)
 	}
-	parentID := stringValue(entry, "parentId")
-	if parentID == "" {
-		parentID = stringValue(entry, "parent_id")
-	}
+	parentID := firstString(stringValue(entry, "parentId"), stringValue(entry, "parent_id"))
 	kind := model.KindUnknown
 	name := ""
-	typ := stringValue(entry, "type")
-	eventName := stringValue(entry, "event")
+	typ := firstString(stringValue(entry, "type"), stringValue(entry, "event"))
 	native := entry
 	if payload, ok := entry["payload"].(map[string]any); ok {
 		native = payload
 	}
 	switch typ {
-	case "session":
+	case "session", "session_start", "session_shutdown":
 		kind, name = model.KindSession, "flowtel.session"
+	case "before_agent_start", "agent_start":
+		kind, name = model.KindAgent, "flowtel.agent"
+		if state.agentID == "" {
+			state.agentID = firstString(id, "agent:"+state.sessionID)
+		}
+		id = state.agentID
+		if parentID == "" {
+			parentID = state.sessionID
+		}
+	case "agent_end", "agent_settled":
+		kind, name = model.KindAgent, "flowtel.agent"
+		id = firstString(state.agentID, id)
+		if parentID == "" {
+			parentID = state.sessionID
+		}
+	case "turn_start":
+		state.turnSeq++
+		state.turnID = firstString(id, "turn:"+state.sessionID+":"+strconv.Itoa(state.turnSeq))
+		kind, name = model.KindTurn, "flowtel.turn"
+		id = state.turnID
+		if parentID == "" {
+			parentID = firstString(state.agentID, state.sessionID)
+		}
+	case "turn_end":
+		kind, name = model.KindTurn, "flowtel.turn"
+		id = firstString(state.turnID, id)
+		if parentID == "" {
+			parentID = firstString(state.agentID, state.sessionID)
+		}
 	case "permission":
 		kind, name = model.KindPermission, "flowtel.permission"
 	case "flowtel":
 		kind = model.Kind(stringValue(entry, "kind"))
 		name = stringValue(entry, "name")
-	case "message":
-		message, _ := entry["message"].(map[string]any)
+	case "message", "message_end":
+		message, _ := firstMap(entry["message"], native["message"])
 		role := stringValue(message, "role")
-		if role == "assistant" && hasUsage(message) {
+		if role == "assistant" && (hasUsage(message) || hasUsage(native) || typ == "message_end") {
 			kind, name = model.KindLLM, "llm"
 		} else if role == "toolResult" || hasToolCall(message) {
 			kind, name = model.KindTool, "tool.unknown"
 		}
-	}
-	if eventName != "" {
-		switch eventName {
-		case "session_start", "session_shutdown":
-			kind, name = model.KindSession, "flowtel.session"
-		case "message_end":
+	case "message_start":
+		message, _ := firstMap(entry["message"], native["message"])
+		if stringValue(message, "role") == "assistant" {
 			kind, name = model.KindLLM, "llm"
-		case "tool_execution_start", "tool_execution_end":
-			kind, name = model.KindTool, "tool.unknown"
+		}
+	case "tool_execution_start", "tool_execution_end":
+		kind, name = model.KindTool, "tool.unknown"
+	case "compaction_start", "compaction_end":
+		kind, name = model.KindCompaction, "flowtel.compaction"
+		if typ == "compaction_start" {
+			state.compactSeq++
+		}
+		id = firstString(id, "compaction:"+state.sessionID+":"+strconv.Itoa(state.compactSeq))
+		if parentID == "" {
+			parentID = firstString(state.turnID, state.agentID, state.sessionID)
 		}
 	}
 	if kind == model.KindUnknown {
 		return nil
 	}
+	if parentID == "" {
+		parentID = state.defaultParent(kind)
+	}
 	event := model.Event{
-		ID: id, ParentID: parentID, SessionID: sessionID, Harness: "pi",
+		ID: id, ParentID: parentID, SessionID: state.sessionID, Harness: "pi",
 		Profile: p.Profile, Kind: kind, Name: name,
 		Start: timestamp(entry), End: timestamp(entry),
 		Model:              stringValue(entry, "model"),
@@ -138,12 +173,13 @@ func (p Parser) eventsFromEntry(entry map[string]any, sessionID string, lineNumb
 		event.SessionID = stringValue(native, "session_id")
 	}
 	if event.Kind == model.KindLLM {
-		message, _ := native["message"].(map[string]any)
-		event.Model = firstString(stringValue(entry, "model"), stringValue(message, "model"))
-		event.Provider = firstString(stringValue(entry, "provider"), stringValue(message, "provider"))
-		if usage, ok := message["usage"].(map[string]any); ok {
-			event.InputTokens = numberValue(usage, "input", "input_tokens", "prompt_tokens")
-			event.OutputTokens = numberValue(usage, "output", "output_tokens", "completion_tokens")
+		message, _ := firstMap(native["message"], entry["message"])
+		event.Model = firstString(event.Model, stringValue(message, "model"))
+		event.Provider = firstString(event.Provider, stringValue(message, "provider"))
+		event.InputTokens, event.OutputTokens, event.ReasoningTokens, event.CacheReadTokens = usageTokens(entry, native, message)
+		state.lastLLM = event.ID
+		if event.ParentID == "" {
+			event.ParentID = firstString(state.turnID, state.agentID, state.sessionID)
 		}
 	}
 	if event.Kind == model.KindTool {
@@ -152,17 +188,47 @@ func (p Parser) eventsFromEntry(entry map[string]any, sessionID string, lineNumb
 		if event.ToolName != "" {
 			event.Name = "tool." + event.ToolName
 		}
-		if boolValue(entry, "isError") {
+		if event.Name == "" {
+			event.Name = "tool.unknown"
+		}
+		if stderr := toolError(entry, native); stderr != "" {
+			event.Error = stderr
+		} else if boolValue(entry, "isError") {
 			event.Error = "tool execution failed"
 		}
+		if event.ParentID == "" {
+			event.ParentID = firstString(state.turnID, state.lastLLM, state.agentID, state.sessionID)
+		}
 	}
-	if event.Kind == model.KindTool && event.Name == "" {
-		event.Name = "tool.unknown"
-	}
-	if kind == model.KindPermission && event.PermissionDecision == "" {
+	if event.Kind == model.KindPermission && event.PermissionDecision == "" {
 		event.PermissionDecision = stringValue(entry, "status")
 	}
 	return []model.Event{event}
+}
+
+func (s *parseState) rememberSession(entry map[string]any) {
+	if s.sessionID != "" {
+		return
+	}
+	s.sessionID = firstString(stringValue(entry, "sessionId"), stringValue(entry, "session_id"))
+	if s.sessionID == "" && (stringValue(entry, "type") == "session" || stringValue(entry, "event") == "session_start") {
+		s.sessionID = stringValue(entry, "id")
+	}
+}
+
+func (s *parseState) defaultParent(kind model.Kind) string {
+	switch kind {
+	case model.KindAgent:
+		return s.sessionID
+	case model.KindTurn:
+		return firstString(s.agentID, s.sessionID)
+	case model.KindLLM, model.KindCompaction:
+		return firstString(s.turnID, s.agentID, s.sessionID)
+	case model.KindTool, model.KindPermission:
+		return firstString(s.turnID, s.lastLLM, s.agentID, s.sessionID)
+	default:
+		return s.sessionID
+	}
 }
 
 func (p Parser) failure(line int, err error) error {
@@ -217,6 +283,15 @@ func firstString(values ...string) string {
 	return ""
 }
 
+func firstMap(values ...any) (map[string]any, bool) {
+	for _, value := range values {
+		if typed, ok := value.(map[string]any); ok {
+			return typed, true
+		}
+	}
+	return nil, false
+}
+
 func numberValue(values map[string]any, keys ...string) int64 {
 	for _, key := range keys {
 		switch value := values[key].(type) {
@@ -232,6 +307,22 @@ func numberValue(values map[string]any, keys ...string) int64 {
 func boolValue(values map[string]any, key string) bool {
 	value, ok := values[key].(bool)
 	return ok && value
+}
+
+func usageTokens(entry, native, message map[string]any) (input, output, reasoning, cacheRead int64) {
+	usage, _ := firstMap(native["usage"], message["usage"], entry["usage"])
+	if usage == nil {
+		return 0, 0, 0, 0
+	}
+	return numberValue(usage, "input", "input_tokens", "prompt_tokens"),
+		numberValue(usage, "output", "output_tokens", "completion_tokens"),
+		numberValue(usage, "reasoning", "reasoning_tokens"),
+		numberValue(usage, "cacheRead", "cache_read", "cacheReadTokens")
+}
+
+func toolError(entry, native map[string]any) string {
+	result, _ := firstMap(entry["result"], native["result"])
+	return firstString(stringValue(entry, "stderr"), stringValue(native, "stderr"), stringValue(result, "stderr"))
 }
 
 func timestamp(values map[string]any) time.Time {
