@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/atharvamhaske/flowtel/internal/integration/server"
 )
@@ -19,9 +20,11 @@ type Scenario struct {
 }
 
 type Server struct {
-	host *server.Server
-	mu   sync.Mutex
-	rows []Row
+	host   *server.Server
+	mu     sync.Mutex
+	rows   []Row
+	status int
+	stall  time.Duration
 }
 
 func New() *Server {
@@ -42,6 +45,18 @@ func (s *Server) Rows() []Row {
 	return rows
 }
 
+func (s *Server) Fail(status int) {
+	s.mu.Lock()
+	s.status = status
+	s.mu.Unlock()
+}
+
+func (s *Server) Stall(delay time.Duration) {
+	s.mu.Lock()
+	s.stall = delay
+	s.mu.Unlock()
+}
+
 func (s *Server) Matches(scenario Scenario) bool {
 	rows := s.Rows()
 	position := 0
@@ -58,6 +73,13 @@ func (s *Server) Matches(scenario Scenario) bool {
 }
 
 func (s *Server) handle(response http.ResponseWriter, request *http.Request) {
+	s.mu.Lock()
+	stall := s.stall
+	status := s.status
+	s.mu.Unlock()
+	if stall > 0 {
+		time.Sleep(stall)
+	}
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		http.Error(response, err.Error(), http.StatusBadRequest)
@@ -66,5 +88,9 @@ func (s *Server) handle(response http.ResponseWriter, request *http.Request) {
 	s.mu.Lock()
 	s.rows = append(s.rows, Row{Path: request.URL.Path, Body: append([]byte(nil), body...)})
 	s.mu.Unlock()
+	if status >= http.StatusBadRequest {
+		response.WriteHeader(status)
+		return
+	}
 	response.WriteHeader(http.StatusAccepted)
 }
