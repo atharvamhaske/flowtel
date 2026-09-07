@@ -3,6 +3,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -34,6 +35,9 @@ func (r Recorder) Start(ctx context.Context, event model.Event) (context.Context
 	}
 	spanContext, span := r.tracer.Start(ctx, event.Name, options...)
 	span.SetAttributes(toAttributes(attributes)...)
+	if event.Error != "" {
+		span.SetStatus(codes.Error, event.Error)
+	}
 	return spanContext, span, nil
 }
 

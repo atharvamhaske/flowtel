@@ -17,7 +17,7 @@ import (
 func TestDaemonWireProtocol(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	config := daemon.Config{SocketPath: filepath.Join(root, "run", "daemon.sock"), DataDir: filepath.Join(root, "data"), DaemonVersion: "test", Sources: []string{"debug"}, MaxLineBytes: 4096}
+	config := daemon.Config{SocketPath: filepath.Join(root, "run", "daemon.sock"), DataDir: filepath.Join(root, "data"), DaemonVersion: "test", Sources: []string{"debug"}, MaxLineBytes: 4096, QueueSize: 8}
 	server, err := daemon.New(config, nil)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -51,7 +51,7 @@ func TestDaemonWireProtocol(t *testing.T) {
 	if initResponse["error"] != nil {
 		t.Fatalf("initialize response = %v", initResponse)
 	}
-	eventResponse := send(map[string]any{"jsonrpc": "2.0", "id": "event", "method": "event.log", "params": map[string]any{"source": "debug", "session_id": "s1", "event": "tool", "ts_ms": time.Now().UnixMilli(), "payload": map[string]any{"kind": "tool"}}})
+	eventResponse := send(map[string]any{"jsonrpc": "2.0", "id": "event", "method": "event.log", "params": map[string]any{"source": "debug", "source_version": "1", "plugin_version": "1", "session_id": "s1", "event": "tool", "ts_ms": time.Now().UnixMilli(), "payload": map[string]any{"kind": "tool"}, "config": map[string]any{"profile": "both"}, "capture": map[string]any{"pid": 1}}})
 	if eventResponse["error"] != nil {
 		t.Fatalf("event response = %v", eventResponse)
 	}

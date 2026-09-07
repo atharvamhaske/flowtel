@@ -61,6 +61,9 @@ func (p Parser) Parse(ctx context.Context, input io.Reader) (Result, error) {
 		}
 		if sessionID == "" {
 			sessionID = stringValue(entry, "sessionId")
+			if sessionID == "" {
+				sessionID = stringValue(entry, "session_id")
+			}
 			if sessionID == "" && stringValue(entry, "type") == "session" {
 				sessionID = stringValue(entry, "id")
 			}
@@ -80,9 +83,17 @@ func (p Parser) eventsFromEntry(entry map[string]any, sessionID string, lineNumb
 		id = "line-" + strconv.Itoa(lineNumber)
 	}
 	parentID := stringValue(entry, "parentId")
+	if parentID == "" {
+		parentID = stringValue(entry, "parent_id")
+	}
 	kind := model.KindUnknown
 	name := ""
 	typ := stringValue(entry, "type")
+	eventName := stringValue(entry, "event")
+	native := entry
+	if payload, ok := entry["payload"].(map[string]any); ok {
+		native = payload
+	}
 	switch typ {
 	case "session":
 		kind, name = model.KindSession, "flowtel.session"
@@ -100,6 +111,16 @@ func (p Parser) eventsFromEntry(entry map[string]any, sessionID string, lineNumb
 			kind, name = model.KindTool, "tool.unknown"
 		}
 	}
+	if eventName != "" {
+		switch eventName {
+		case "session_start", "session_shutdown":
+			kind, name = model.KindSession, "flowtel.session"
+		case "message_end":
+			kind, name = model.KindLLM, "llm"
+		case "tool_execution_start", "tool_execution_end":
+			kind, name = model.KindTool, "tool.unknown"
+		}
+	}
 	if kind == model.KindUnknown {
 		return nil
 	}
@@ -112,6 +133,28 @@ func (p Parser) eventsFromEntry(entry map[string]any, sessionID string, lineNumb
 		ToolName:           stringValue(entry, "toolName"),
 		PermissionDecision: stringValue(entry, "decision"),
 		PermissionSource:   stringValue(entry, "source"),
+	}
+	if event.SessionID == "" {
+		event.SessionID = stringValue(native, "session_id")
+	}
+	if event.Kind == model.KindLLM {
+		message, _ := native["message"].(map[string]any)
+		event.Model = firstString(stringValue(entry, "model"), stringValue(message, "model"))
+		event.Provider = firstString(stringValue(entry, "provider"), stringValue(message, "provider"))
+		if usage, ok := message["usage"].(map[string]any); ok {
+			event.InputTokens = numberValue(usage, "input", "input_tokens", "prompt_tokens")
+			event.OutputTokens = numberValue(usage, "output", "output_tokens", "completion_tokens")
+		}
+	}
+	if event.Kind == model.KindTool {
+		event.ID = firstString(stringValue(entry, "toolCallId"), stringValue(entry, "tool_call_id"), event.ID)
+		event.ToolName = firstString(stringValue(entry, "toolName"), stringValue(entry, "tool_name"), event.ToolName)
+		if event.ToolName != "" {
+			event.Name = "tool." + event.ToolName
+		}
+		if boolValue(entry, "isError") {
+			event.Error = "tool execution failed"
+		}
 	}
 	if event.Kind == model.KindTool && event.Name == "" {
 		event.Name = "tool.unknown"
@@ -165,7 +208,36 @@ func hasToolCall(message map[string]any) bool {
 	return false
 }
 
+func firstString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func numberValue(values map[string]any, keys ...string) int64 {
+	for _, key := range keys {
+		switch value := values[key].(type) {
+		case float64:
+			return int64(value)
+		case int64:
+			return value
+		}
+	}
+	return 0
+}
+
+func boolValue(values map[string]any, key string) bool {
+	value, ok := values[key].(bool)
+	return ok && value
+}
+
 func timestamp(values map[string]any) time.Time {
+	if milliseconds, ok := values["ts_ms"].(float64); ok {
+		return time.Unix(0, int64(milliseconds)*int64(time.Millisecond))
+	}
 	value := values["timestamp"]
 	switch typed := value.(type) {
 	case string:

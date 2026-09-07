@@ -37,12 +37,15 @@ type Client struct {
 type Envelope struct {
 	Source        string          `json:"source"`
 	SourceVersion string          `json:"source_version,omitempty"`
+	PluginVersion string          `json:"plugin_version,omitempty"`
 	SessionID     string          `json:"session_id"`
 	Event         string          `json:"event"`
 	TimestampMS   int64           `json:"ts_ms"`
 	ManagedRunID  string          `json:"managed_run_id,omitempty"`
 	Payload       json.RawMessage `json:"payload"`
 	Route         json.RawMessage `json:"route,omitempty"`
+	Config        json.RawMessage `json:"config,omitempty"`
+	Capture       json.RawMessage `json:"capture,omitempty"`
 }
 
 func (e Envelope) Validate() error {
@@ -58,6 +61,12 @@ func (e Envelope) Validate() error {
 	if len(e.Route) > 0 && !json.Valid(e.Route) {
 		return fmt.Errorf("envelope route is not valid json")
 	}
+	if len(e.Config) > 0 && !json.Valid(e.Config) {
+		return fmt.Errorf("envelope config is not valid json")
+	}
+	if len(e.Capture) > 0 && !json.Valid(e.Capture) {
+		return fmt.Errorf("envelope capture is not valid json")
+	}
 	return nil
 }
 
@@ -67,6 +76,7 @@ type Status struct {
 	UptimeMS      int64           `json:"uptime_ms"`
 	Queued        int             `json:"queued"`
 	EventsStored  int64           `json:"events_stored"`
+	LastError     string          `json:"last_error,omitempty"`
 	Sessions      []SessionStatus `json:"sessions"`
 }
 
@@ -74,6 +84,7 @@ type SessionStatus struct {
 	SessionID string `json:"session_id"`
 	Source    string `json:"source"`
 	Queued    int    `json:"queued"`
+	LastError string `json:"last_error,omitempty"`
 }
 
 func decodeParams(raw json.RawMessage, target any) error {

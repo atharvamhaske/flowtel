@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,6 +32,7 @@ type Config struct {
 	DaemonVersion string
 	Sources       []string
 	MaxLineBytes  int
+	QueueSize     int
 }
 
 func (c Config) Validate() error {
@@ -41,6 +41,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxLineBytes < 1 {
 		return fmt.Errorf("daemon max line bytes must be positive")
+	}
+	if c.QueueSize < 1 {
+		return fmt.Errorf("daemon queue size must be positive")
 	}
 	return nil
 }
@@ -66,7 +69,7 @@ func DefaultConfig() (Config, error) {
 	}
 	return Config{
 		SocketPath: socketPath, DataDir: dataDir, DaemonVersion: "dev",
-		Sources: []string{"pi", "claude-code", "opencode", "debug"}, MaxLineBytes: DefaultMaxLineBytes,
+		Sources: []string{"pi", "debug"}, MaxLineBytes: DefaultMaxLineBytes, QueueSize: 1024,
 	}, nil
 }
 
@@ -79,16 +82,23 @@ type NopSink struct{}
 func (NopSink) Accept(context.Context, Envelope) error { return nil }
 
 type Daemon struct {
-	config    Config
-	sink      Sink
-	listener  net.Listener
-	started   time.Time
-	journal   *os.File
-	journalMu sync.Mutex
-	stateMu   sync.Mutex
-	sessions  map[string]SessionStatus
-	stored    atomic.Int64
-	closed    atomic.Bool
+	config       Config
+	sink         Sink
+	listener     net.Listener
+	started      time.Time
+	journal      *os.File
+	journalMu    sync.Mutex
+	stateMu      sync.Mutex
+	sessions     map[string]SessionStatus
+	queue        chan Envelope
+	workerCtx    context.Context
+	workerCancel context.CancelFunc
+	workerWG     sync.WaitGroup
+	connMu       sync.Mutex
+	connections  map[net.Conn]struct{}
+	stored       atomic.Int64
+	closed       atomic.Bool
+	lastError    string
 }
 
 func New(config Config, sink Sink) (*Daemon, error) {
@@ -105,7 +115,11 @@ func New(config Config, sink Sink) (*Daemon, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open daemon journal: %w", err)
 	}
-	return &Daemon{config: config, sink: sink, journal: journal, sessions: make(map[string]SessionStatus)}, nil
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	d := &Daemon{config: config, sink: sink, journal: journal, sessions: make(map[string]SessionStatus), queue: make(chan Envelope, config.QueueSize), workerCtx: workerCtx, workerCancel: workerCancel, connections: make(map[net.Conn]struct{})}
+	d.workerWG.Add(1)
+	go d.runWorker()
+	return d, nil
 }
 
 func (d *Daemon) Serve(ctx context.Context) error {
@@ -144,6 +158,14 @@ func (d *Daemon) Serve(ctx context.Context) error {
 // ServeConn serves one already-accepted protocol connection. It is useful for
 // embedders and tests that provide their own transport.
 func (d *Daemon) ServeConn(ctx context.Context, connection net.Conn) {
+	d.connMu.Lock()
+	d.connections[connection] = struct{}{}
+	d.connMu.Unlock()
+	defer func() {
+		d.connMu.Lock()
+		delete(d.connections, connection)
+		d.connMu.Unlock()
+	}()
 	d.handleConnection(ctx, connection)
 }
 
@@ -154,6 +176,16 @@ func (d *Daemon) Close() error {
 	if d.listener != nil {
 		_ = d.listener.Close()
 	}
+	d.connMu.Lock()
+	for connection := range d.connections {
+		_ = connection.Close()
+	}
+	d.connections = make(map[net.Conn]struct{})
+	d.connMu.Unlock()
+	d.workerCancel()
+	d.workerWG.Wait()
+	d.journalMu.Lock()
+	defer d.journalMu.Unlock()
 	if d.journal != nil {
 		if err := d.journal.Close(); err != nil {
 			return fmt.Errorf("close daemon journal: %w", err)
@@ -192,6 +224,7 @@ func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 			}
 		}
 		if request.Method == "daemon.shutdown" && response.Error == nil {
+			go func() { _ = d.Close() }()
 			return
 		}
 	}
@@ -234,12 +267,12 @@ func (d *Daemon) dispatch(ctx context.Context, request Request) (Response, bool)
 			response.Error = rpcError(invalidParams, "session_id is required")
 			return response, true
 		}
-		response.Result = map[string]any{"flushed": true, "pending": 0, "accepted_sessions": d.sessionCount(params.SessionID)}
+		flushed := d.waitSession(ctx, params.SessionID, params.TimeoutMS)
+		response.Result = map[string]any{"flushed": flushed, "pending": d.pending(params.SessionID), "accepted_sessions": d.sessionCount(params.SessionID)}
 	case "status.get":
 		response.Result = d.status()
 	case "daemon.shutdown":
 		response.Result = map[string]any{"ok": true}
-		go func() { _ = d.Close() }()
 	default:
 		response.Error = rpcError(methodNotFound, "method not found")
 	}
@@ -272,13 +305,83 @@ func (d *Daemon) append(ctx context.Context, envelope Envelope) error {
 	session := d.sessions[envelope.SessionID]
 	session.SessionID = envelope.SessionID
 	session.Source = envelope.Source
+	session.Queued++
 	d.sessions[envelope.SessionID] = session
 	d.stateMu.Unlock()
 	d.stored.Add(1)
-	if err := d.sink.Accept(ctx, envelope); err != nil {
-		return fmt.Errorf("accept event in sink: %w", err)
+	select {
+	case d.queue <- envelope:
+	case <-ctx.Done():
+		return fmt.Errorf("queue event: %w", ctx.Err())
+	case <-d.workerCtx.Done():
+		return fmt.Errorf("queue event: daemon is closed")
 	}
 	return nil
+}
+
+func (d *Daemon) runWorker() {
+	defer d.workerWG.Done()
+	for {
+		select {
+		case envelope := <-d.queue:
+			d.deliver(d.workerCtx, envelope)
+		case <-d.workerCtx.Done():
+			drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			for {
+				select {
+				case envelope := <-d.queue:
+					d.deliver(drainCtx, envelope)
+				default:
+					cancel()
+					return
+				}
+			}
+		}
+	}
+}
+
+func (d *Daemon) deliver(ctx context.Context, envelope Envelope) {
+	err := d.sink.Accept(ctx, envelope)
+	d.stateMu.Lock()
+	session := d.sessions[envelope.SessionID]
+	session.Queued--
+	if err != nil {
+		session.LastError = err.Error()
+		d.lastError = err.Error()
+	}
+	d.sessions[envelope.SessionID] = session
+	d.stateMu.Unlock()
+}
+
+func (d *Daemon) waitSession(ctx context.Context, sessionID string, timeoutMS int) bool {
+	if timeoutMS < 0 {
+		return false
+	}
+	if timeoutMS == 0 {
+		timeoutMS = 10000
+	}
+	deadline := time.NewTimer(time.Duration(timeoutMS) * time.Millisecond)
+	defer deadline.Stop()
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if d.pending(sessionID) == 0 {
+			d.stateMu.Lock()
+			failed := d.sessions[sessionID].LastError != ""
+			d.stateMu.Unlock()
+			if failed {
+				return false
+			}
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline.C:
+			return false
+		case <-ticker.C:
+		}
+	}
 }
 
 func (d *Daemon) sessionCount(sessionID string) int {
@@ -301,7 +404,13 @@ func (d *Daemon) status() Status {
 	if !d.started.IsZero() {
 		uptime = time.Since(d.started).Milliseconds()
 	}
-	return Status{DaemonVersion: d.config.DaemonVersion, Protocol: ProtocolVersion, UptimeMS: uptime, EventsStored: d.stored.Load(), Sessions: sessions}
+	return Status{DaemonVersion: d.config.DaemonVersion, Protocol: ProtocolVersion, UptimeMS: uptime, Queued: len(d.queue), EventsStored: d.stored.Load(), LastError: d.lastError, Sessions: sessions}
+}
+
+func (d *Daemon) pending(sessionID string) int {
+	d.stateMu.Lock()
+	defer d.stateMu.Unlock()
+	return d.sessions[sessionID].Queued
 }
 
 func decodeRequest(line []byte) (Request, error) {
@@ -344,5 +453,3 @@ func removeSocket(path string) error {
 	}
 	return nil
 }
-
-func pidString(pid int) string { return strconv.Itoa(pid) }

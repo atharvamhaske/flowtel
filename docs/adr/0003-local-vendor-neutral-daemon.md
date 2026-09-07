@@ -20,6 +20,6 @@ vendor-neutral.
   Windows adapter is needed.
 - The prototype journal is one JSONL file. Per-session WAL files and replay
   checkpoints are future work.
-- `event.log` is durably appended before the sink runs. The current sink is
-  synchronous and no-op; asynchronous bounded processing belongs to the next
+- `event.log` is durably appended before a bounded worker queue accepts it.
+  The default sink is no-op; OTLP delivery and retry policy remain a later
   implementation slice.

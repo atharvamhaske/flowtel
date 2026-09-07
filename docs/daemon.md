@@ -18,9 +18,9 @@ The daemon accepts newline-delimited JSON-RPC 2.0 frames. The v1 methods are:
 - `daemon.shutdown`: stop accepting work and close cleanly.
 
 The journal stores only the envelope. Credentials and destination-specific
-fields are not resolved by the wire protocol. A future OTLP sink can consume
-the same envelope through the `daemon.Sink` interface without changing the
-harness contract.
+fields are not resolved by the wire protocol. A bounded worker queue delivers
+accepted envelopes to the `daemon.Sink` interface after journaling. The default
+sink is no-op until the OTLP bridge is wired in.
 
 Run it with:
 

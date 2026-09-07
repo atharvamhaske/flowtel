@@ -57,3 +57,24 @@ func TestParserReadsFlowtelBridgeEntries(t *testing.T) {
 		t.Fatalf("events = %+v", result.Events)
 	}
 }
+
+func TestParserReadsPiLifecycleEvents(t *testing.T) {
+	input := strings.NewReader(`{"event":"session_start","session_id":"s1","ts_ms":1}
+{"event":"message_end","session_id":"s1","ts_ms":2,"message":{"role":"assistant","model":"gpt-5","provider":"openai","usage":{"input":5,"output":2}}}
+{"event":"tool_execution_start","session_id":"s1","ts_ms":3,"toolCallId":"call-1","toolName":"read"}
+{"event":"tool_execution_end","session_id":"s1","ts_ms":4,"toolCallId":"call-1","toolName":"read","isError":true}
+`)
+	result, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Events) != 4 {
+		t.Fatalf("event count = %d, want 4", len(result.Events))
+	}
+	if result.Events[1].Kind != model.KindLLM || result.Events[1].InputTokens != 5 || result.Events[1].OutputTokens != 2 {
+		t.Fatalf("llm event = %+v", result.Events[1])
+	}
+	if result.Events[3].ID != "call-1" || result.Events[3].Error == "" {
+		t.Fatalf("tool event = %+v", result.Events[3])
+	}
+}

@@ -49,6 +49,7 @@ type Event struct {
 	ToolName           string
 	PermissionDecision string
 	PermissionSource   string
+	Error              string
 	InputTokens        int64
 	OutputTokens       int64
 }
