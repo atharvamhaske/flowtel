@@ -48,6 +48,18 @@ func (Renderer) Render(event model.Event) (map[string]any, error) {
 		if event.ToolName != "" {
 			attributes["gen_ai.tool.name"] = event.ToolName
 		}
+		if event.InputTokens != 0 {
+			attributes["gen_ai.usage.input_tokens"] = event.InputTokens
+		}
+		if event.OutputTokens != 0 {
+			attributes["gen_ai.usage.output_tokens"] = event.OutputTokens
+		}
+		if event.ReasoningTokens != 0 {
+			attributes["gen_ai.usage.reasoning_tokens"] = event.ReasoningTokens
+		}
+		if event.CacheReadTokens != 0 {
+			attributes["gen_ai.usage.cached_input_tokens"] = event.CacheReadTokens
+		}
 	}
 	if event.Kind == model.KindPermission {
 		attributes["flowtel.permission.decision"] = event.PermissionDecision
@@ -60,14 +72,12 @@ func (Renderer) Render(event model.Event) (map[string]any, error) {
 
 func openInferenceKind(kind model.Kind) string {
 	switch kind {
-	case model.KindSession:
+	case model.KindSession, model.KindAgent, model.KindTurn, model.KindPermission, model.KindCompaction:
 		return "CHAIN"
 	case model.KindLLM:
 		return "LLM"
 	case model.KindTool:
 		return "TOOL"
-	case model.KindPermission:
-		return "CHAIN"
 	default:
 		return "UNKNOWN"
 	}

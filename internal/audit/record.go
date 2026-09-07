@@ -54,12 +54,18 @@ func eventName(kind model.Kind) (string, bool) {
 	switch kind {
 	case model.KindSession:
 		return "flowtel.session.completed", true
+	case model.KindAgent:
+		return "flowtel.agent.completed", true
+	case model.KindTurn:
+		return "flowtel.turn.completed", true
 	case model.KindLLM:
 		return "flowtel.llm.completed", true
 	case model.KindTool:
 		return "flowtel.tool.completed", true
 	case model.KindPermission:
 		return "flowtel.permission.decided", true
+	case model.KindCompaction:
+		return "flowtel.compaction.completed", true
 	default:
 		return "", false
 	}
