@@ -29,9 +29,12 @@ type Kind string
 const (
 	KindUnknown    Kind = ""
 	KindSession    Kind = "session"
+	KindAgent      Kind = "agent"
+	KindTurn       Kind = "turn"
 	KindLLM        Kind = "llm"
 	KindTool       Kind = "tool"
 	KindPermission Kind = "permission"
+	KindCompaction Kind = "compaction"
 )
 
 type Event struct {
@@ -52,6 +55,8 @@ type Event struct {
 	Error              string
 	InputTokens        int64
 	OutputTokens       int64
+	ReasoningTokens    int64
+	CacheReadTokens    int64
 }
 
 func (e Event) Validate() error {
