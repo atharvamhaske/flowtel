@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -97,6 +98,7 @@ type Daemon struct {
 	connMu       sync.Mutex
 	connections  map[net.Conn]struct{}
 	stored       atomic.Int64
+	delivered    atomic.Int64
 	closed       atomic.Bool
 	lastError    string
 }
@@ -119,7 +121,15 @@ func New(config Config, sink Sink) (*Daemon, error) {
 	d := &Daemon{config: config, sink: sink, journal: journal, sessions: make(map[string]SessionStatus), queue: make(chan Envelope, config.QueueSize), workerCtx: workerCtx, workerCancel: workerCancel, connections: make(map[net.Conn]struct{})}
 	d.workerWG.Add(1)
 	go d.runWorker()
+	if err := d.replay(); err != nil {
+		_ = d.Close()
+		return nil, err
+	}
 	return d, nil
+}
+
+func (d *Daemon) Status() Status {
+	return d.status()
 }
 
 func (d *Daemon) Serve(ctx context.Context) error {
@@ -301,6 +311,11 @@ func (d *Daemon) append(ctx context.Context, envelope Envelope) error {
 	if writeErr != nil {
 		return fmt.Errorf("journal event: %w", writeErr)
 	}
+	d.stored.Add(1)
+	return d.enqueue(ctx, envelope)
+}
+
+func (d *Daemon) enqueue(ctx context.Context, envelope Envelope) error {
 	d.stateMu.Lock()
 	session := d.sessions[envelope.SessionID]
 	session.SessionID = envelope.SessionID
@@ -308,15 +323,14 @@ func (d *Daemon) append(ctx context.Context, envelope Envelope) error {
 	session.Queued++
 	d.sessions[envelope.SessionID] = session
 	d.stateMu.Unlock()
-	d.stored.Add(1)
 	select {
 	case d.queue <- envelope:
+		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("queue event: %w", ctx.Err())
 	case <-d.workerCtx.Done():
 		return fmt.Errorf("queue event: daemon is closed")
 	}
-	return nil
 }
 
 func (d *Daemon) runWorker() {
@@ -348,9 +362,70 @@ func (d *Daemon) deliver(ctx context.Context, envelope Envelope) {
 	if err != nil {
 		session.LastError = err.Error()
 		d.lastError = err.Error()
+	} else {
+		session.LastError = ""
+		d.lastError = ""
+		d.delivered.Add(1)
+		_ = d.writeCheckpoint()
 	}
 	d.sessions[envelope.SessionID] = session
 	d.stateMu.Unlock()
+}
+
+func (d *Daemon) replay() error {
+	path := filepath.Join(d.config.DataDir, "events.jsonl")
+	file, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("open daemon journal for replay: %w", err)
+	}
+	defer file.Close()
+	delivered := readCheckpoint(d.config.DataDir)
+	d.delivered.Store(delivered)
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 4096), d.config.MaxLineBytes)
+	var line int64
+	for scanner.Scan() {
+		line++
+		if line <= delivered {
+			continue
+		}
+		var envelope Envelope
+		if err := json.Unmarshal(scanner.Bytes(), &envelope); err != nil {
+			return fmt.Errorf("replay journal line %d: %w", line, err)
+		}
+		if err := d.enqueue(d.workerCtx, envelope); err != nil {
+			return fmt.Errorf("replay journal line %d: %w", line, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("replay daemon journal: %w", err)
+	}
+	d.stored.Store(line)
+	return nil
+}
+
+func (d *Daemon) writeCheckpoint() error {
+	path := filepath.Join(d.config.DataDir, "delivered")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(strconv.FormatInt(d.delivered.Load(), 10)+"\n"), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func readCheckpoint(dataDir string) int64 {
+	data, err := os.ReadFile(filepath.Join(dataDir, "delivered"))
+	if err != nil {
+		return 0
+	}
+	count, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil || count < 0 {
+		return 0
+	}
+	return count
 }
 
 func (d *Daemon) waitSession(ctx context.Context, sessionID string, timeoutMS int) bool {
