@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/atharvamhaske/flowtel/internal/audit"
 	flowtrace "github.com/atharvamhaske/flowtel/internal/trace"
@@ -20,10 +22,12 @@ import (
 )
 
 type Pipeline struct {
-	traces *trace.TracerProvider
-	logs   *log.LoggerProvider
-	record flowtrace.Recorder
-	logger otellog.Logger
+	traces   *trace.TracerProvider
+	logs     *log.LoggerProvider
+	record   flowtrace.Recorder
+	logger   otellog.Logger
+	mu       sync.Mutex
+	contexts map[string]context.Context
 }
 
 func New(ctx context.Context, endpoint string) (*Pipeline, error) {
@@ -42,10 +46,11 @@ func New(ctx context.Context, endpoint string) (*Pipeline, error) {
 	traces := trace.NewTracerProvider(trace.WithBatcher(traceExporter))
 	logs := log.NewLoggerProvider(log.WithProcessor(log.NewBatchProcessor(logExporter)))
 	return &Pipeline{
-		traces: traces,
-		logs:   logs,
-		record: flowtrace.New(traces.Tracer("github.com/atharvamhaske/flowtel")),
-		logger: logs.Logger("github.com/atharvamhaske/flowtel"),
+		traces:   traces,
+		logs:     logs,
+		record:   flowtrace.New(traces.Tracer("github.com/atharvamhaske/flowtel")),
+		logger:   logs.Logger("github.com/atharvamhaske/flowtel"),
+		contexts: make(map[string]context.Context),
 	}, nil
 }
 
@@ -53,19 +58,23 @@ func (p *Pipeline) Record(ctx context.Context, events []model.Event, records []a
 	if p == nil || p.traces == nil || p.logs == nil {
 		return fmt.Errorf("record otlp data: pipeline is nil")
 	}
-	contexts := make(map[string]context.Context, len(events))
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.contexts == nil {
+		p.contexts = make(map[string]context.Context)
+	}
 	for _, event := range events {
 		parent := ctx
 		if event.ParentID != "" {
-			if parentContext, ok := contexts[event.ParentID]; ok {
+			if parentContext, ok := p.contexts[event.ParentID]; ok {
 				parent = parentContext
 			}
 		}
-		spanContext, span, err := p.record.Start(parent, event)
+		_, span, err := p.record.Start(parent, event)
 		if err != nil {
 			return fmt.Errorf("record event %q: %w", event.ID, err)
 		}
-		contexts[event.ID] = spanContext
+		p.contexts[event.ID] = oteltrace.ContextWithSpan(context.Background(), span)
 		span.End()
 	}
 	for _, record := range records {
@@ -85,6 +94,13 @@ func (p *Pipeline) Record(ctx context.Context, events []model.Event, records []a
 		p.logger.Emit(ctx, otelRecord)
 	}
 	return nil
+}
+
+func (p *Pipeline) ForceFlush(ctx context.Context) error {
+	if p == nil || p.traces == nil || p.logs == nil {
+		return fmt.Errorf("flush otlp pipeline: pipeline is nil")
+	}
+	return errors.Join(p.traces.ForceFlush(ctx), p.logs.ForceFlush(ctx))
 }
 
 func (p *Pipeline) Shutdown(ctx context.Context) error {
