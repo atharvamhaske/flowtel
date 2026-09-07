@@ -1,0 +1,4 @@
+{"type":"session","id":"session-1","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"message","id":"llm-1","parentId":"session-1","sessionId":"session-1","timestamp":"2026-01-01T00:00:01Z","model":"example-model","provider":"example-provider","message":{"role":"assistant","usage":{"input":12,"output":8}}}
+{"type":"message","id":"tool-1","parentId":"llm-1","sessionId":"session-1","timestamp":"2026-01-01T00:00:02Z","message":{"role":"assistant","content":[{"type":"toolCall","name":"bash"}]}}
+{"type":"permission","id":"permission-1","parentId":"tool-1","sessionId":"session-1","timestamp":"2026-01-01T00:00:03Z","decision":"allow","source":"pi"}

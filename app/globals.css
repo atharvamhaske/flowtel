@@ -1,0 +1,10 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: #ffffff; color: #171717; font-family: Inter, Arial, sans-serif; }
+a { text-decoration: none; }
+.grain { background: #ffffff; }

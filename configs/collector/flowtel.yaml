@@ -1,0 +1,50 @@
+receivers:
+  otlp:
+    protocols:
+      http: {}
+      grpc: {}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  transform/flowtel:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "gen_ai.prompt")
+          - delete_key(attributes, "gen_ai.completion")
+          - delete_key(attributes, "gen_ai.tool.call.arguments")
+          - delete_key(attributes, "gen_ai.tool.call.result")
+    log_statements:
+      - context: log
+        statements:
+          - delete_key(attributes, "gen_ai.prompt")
+          - delete_key(attributes, "gen_ai.completion")
+          - delete_key(attributes, "gen_ai.tool.call.arguments")
+          - delete_key(attributes, "gen_ai.tool.call.result")
+  batch: {}
+
+exporters:
+  otlp/phoenix:
+    endpoint: ${PHOENIX_OTLP_ENDPOINT}
+  otlp/braintrust:
+    endpoint: ${BRAINTRUST_OTLP_ENDPOINT}
+  otlp/laminar:
+    endpoint: ${LAMINAR_OTLP_ENDPOINT}
+  otlphttp/greptime:
+    endpoint: ${GREPTIME_OTLP_ENDPOINT}
+  otlphttp/parseable:
+    endpoint: ${PARSEABLE_OTLP_ENDPOINT}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/flowtel, batch]
+      exporters: [otlp/phoenix, otlp/braintrust, otlp/laminar]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/flowtel, batch]
+      exporters: [otlphttp/greptime, otlphttp/parseable]
