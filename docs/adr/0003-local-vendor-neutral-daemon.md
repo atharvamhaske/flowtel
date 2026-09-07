@@ -21,5 +21,5 @@ vendor-neutral.
 - The prototype journal is one JSONL file. Per-session WAL files and replay
   checkpoints are future work.
 - `event.log` is durably appended before a bounded worker queue accepts it.
-  The default sink is no-op; OTLP delivery and retry policy remain a later
-  implementation slice.
+  The default sink is no-op. `otlp.Sink` is the OTLP delivery implementation;
+  retry policy remains a later slice.

@@ -20,7 +20,7 @@ The daemon accepts newline-delimited JSON-RPC 2.0 frames. The v1 methods are:
 The journal stores only the envelope. Credentials and destination-specific
 fields are not resolved by the wire protocol. A bounded worker queue delivers
 accepted envelopes to the `daemon.Sink` interface after journaling. The default
-sink is no-op until the OTLP bridge is wired in.
+sink is no-op. `otlp.Sink` decodes a `model.Event` payload and exports OTLP.
 
 Run it with:
 
