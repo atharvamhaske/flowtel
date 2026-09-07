@@ -17,6 +17,7 @@ import (
 
 type Pi struct {
 	Profile model.Profile
+	FlushMS int
 }
 
 func (p Pi) Run(ctx context.Context, connection net.Conn, input io.Reader) error {
@@ -43,7 +44,11 @@ func (p Pi) Run(ctx context.Context, connection net.Conn, input io.Reader) error
 		}
 		requestID++
 	}
-	return p.call(ctx, connection, reader, requestID, "session.flush", map[string]any{"session_id": sessionID(result.Events), "timeout_ms": 1000})
+	timeoutMS := p.FlushMS
+	if timeoutMS == 0 {
+		timeoutMS = 1000
+	}
+	return p.call(ctx, connection, reader, requestID, "session.flush", map[string]any{"session_id": sessionID(result.Events), "timeout_ms": timeoutMS})
 }
 
 func (p Pi) call(ctx context.Context, connection net.Conn, reader *bufio.Reader, id int, method string, params any) error {
@@ -66,6 +71,12 @@ func (p Pi) call(ctx context.Context, connection net.Conn, reader *bufio.Reader,
 	}
 	if response.Error != nil {
 		return fmt.Errorf("%s failed: %s", method, response.Error.Message)
+	}
+	if method == "session.flush" {
+		result, _ := response.Result.(map[string]any)
+		if flushed, _ := result["flushed"].(bool); !flushed {
+			return fmt.Errorf("session.flush: delivery incomplete")
+		}
 	}
 	select {
 	case <-ctx.Done():
