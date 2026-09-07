@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flowtel daemon neighborhood</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;
+      --color-ink: #2d3142;
+      --color-muted: #4f5d75;
+      --color-soft: #7a8399;
+      --color-rule: rgba(45,49,66,0.12);
+      --color-accent: #eb6c36;
+      --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', 'Times New Roman', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      padding: 3rem 2rem;
+    }
+    .container { max-width: 1120px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.75rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.75rem, 3vw + 1rem, 2.5rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      font-size: 1rem;
+      line-height: 1.55;
+      color: var(--color-muted);
+      max-width: 56ch;
+    }
+    .diagram-block { margin-top: 2.5rem; }
+    .diagram-block h2 {
+      font-family: var(--font-serif);
+      font-size: 1.75rem;
+      font-weight: 400;
+      margin-bottom: 0.75rem;
+    }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 0.9fr;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 6px;
+      border: 1px solid var(--color-rule);
+      padding: 1.25rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.875rem;
+      padding-bottom: 0.875rem;
+      border-bottom: 1px solid rgba(45,49,66,0.08);
+    }
+    .card-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .card-dot.coral { background: var(--color-accent); }
+    .card-dot.ink { background: var(--color-ink); }
+    .card-dot.link { background: var(--color-link); }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--color-soft);
+      margin-bottom: 0.5rem;
+    }
+    .card ul { list-style: none; color: var(--color-muted); font-size: 0.8125rem; line-height: 1.55; }
+    .card li { margin-bottom: 0.3rem; padding-left: 0.875rem; position: relative; }
+    .card li::before { content: '—'; position: absolute; left: 0; color: rgba(45,49,66,0.25); }
+    .map {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.5rem;
+      font-size: 0.8125rem;
+    }
+    .map th, .map td {
+      text-align: left;
+      padding: 0.7rem 0.75rem;
+      border-bottom: 1px solid var(--color-rule);
+      vertical-align: top;
+    }
+    .map th {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-soft);
+      font-weight: 500;
+    }
+    .map td:first-child, .map td:nth-child(2) { font-family: var(--font-mono); font-size: 0.75rem; }
+    .footer {
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(45,49,66,0.10);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      color: var(--color-soft);
+    }
+    @media (max-width: 800px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <p class="header-eyebrow">Architecture · Daemon neighborhood</p>
+      <h1>The daemon stops at Sink</h1>
+      <p class="subtitle">Rust’s test layers already exist under <code>internal/integration/</code>. The missing product path is daemon envelope → existing IR → existing OTLP.</p>
+    </header>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="daemon-path-title daemon-path-desc">
+        <title id="daemon-path-title">What sits around the Flowtel daemon</title>
+        <desc id="daemon-path-desc">Pi events pass through the adapter into the daemon journal and queue, then stop at Sink. The OTLP pipeline exists but is not wired to the daemon.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+        </defs>
+        <rect width="1000" height="560" fill="#f5f5f5"/>
+
+        <rect x="32" y="64" width="240" height="320" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="48" y="68" width="64" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="80" y="78" fill="rgba(45,49,66,0.40)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">HARNESS</text>
+
+        <rect x="304" y="64" width="280" height="320" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="320" y="68" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="348" y="78" fill="rgba(45,49,66,0.40)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">DAEMON</text>
+
+        <rect x="616" y="64" width="352" height="320" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="632" y="68" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="660" y="78" fill="rgba(45,49,66,0.40)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">EXPORT</text>
+
+        <line x1="152" y1="192" x2="152" y2="256" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 248,296 H 272 Q 280,296 280,288 V 160 Q 280,152 288,152 H 328" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="444" y1="192" x2="444" y2="256" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="560" y1="152" x2="640" y2="152" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="780" y1="152" x2="828" y2="152" stroke="#eb6c36" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow-accent)"/>
+        <line x1="710" y1="192" x2="710" y2="256" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <line x1="888" y1="192" x2="888" y2="256" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+        <rect x="220" y="216" width="52" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="246" y="226" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EVENT.LOG</text>
+        <rect x="580" y="132" width="40" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="600" y="142" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ACCEPT</text>
+        <rect x="792" y="132" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="804" y="142" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">GAP</text>
+        <rect x="656" y="216" width="44" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="678" y="226" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RAW JSON</text>
+
+        <rect x="56" y="112" width="192" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="56" y="112" width="192" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+        <rect x="64" y="118" width="28" height="12" rx="2" fill="transparent" stroke="rgba(122,131,153,0.40)" stroke-width="0.8"/>
+        <text x="78" y="128" fill="rgba(122,131,153,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SRC</text>
+        <text x="152" y="152" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pi fixture</text>
+        <text x="152" y="168" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">JSONL / extension</text>
+
+        <rect x="56" y="256" width="192" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="56" y="256" width="192" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="64" y="262" width="40" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="84" y="272" fill="rgba(45,49,66,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PARSE</text>
+        <text x="152" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">adapter/pi</text>
+        <text x="152" y="312" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">native → Event</text>
+
+        <rect x="328" y="112" width="232" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="328" y="112" width="232" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="336" y="118" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="350" y="128" fill="rgba(45,49,66,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RPC</text>
+        <text x="444" y="152" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Daemon</text>
+        <text x="444" y="168" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">socket · queue · worker</text>
+
+        <rect x="328" y="256" width="232" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="328" y="256" width="232" height="80" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <rect x="336" y="262" width="28" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.40)" stroke-width="0.8"/>
+        <text x="350" y="272" fill="rgba(79,93,117,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WAL</text>
+        <text x="444" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">events.jsonl</text>
+        <text x="444" y="312" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">append only</text>
+
+        <rect x="640" y="112" width="140" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="640" y="112" width="140" height="80" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+        <rect x="648" y="118" width="32" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,0.40)" stroke-width="0.8"/>
+        <text x="664" y="128" fill="rgba(235,108,54,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SINK</text>
+        <text x="710" y="152" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Sink</text>
+        <text x="710" y="168" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Nop / raw POST</text>
+
+        <rect x="828" y="112" width="120" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="828" y="112" width="120" height="80" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+        <rect x="836" y="118" width="32" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="852" y="128" fill="rgba(45,49,66,0.60)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">OTLP</text>
+        <text x="888" y="152" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pipeline</text>
+        <text x="888" y="168" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">IR → HTTP</text>
+
+        <rect x="640" y="256" width="308" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="640" y="256" width="308" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="648" y="262" width="32" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="664" y="272" fill="rgba(45,49,66,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MOCK</text>
+        <text x="794" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Mock ingest</text>
+        <text x="794" y="312" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">/v1/traces · captures bodies</text>
+
+        <line x1="32" y1="420" x2="968" y2="420" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="32" y="444" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+        <rect x="120" y="436" width="12" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+        <text x="140" y="446" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Missing bridge</text>
+        <line x1="280" y1="442" x2="312" y2="442" stroke="#2e5aa8" stroke-width="1.2"/>
+        <text x="320" y="446" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Current test POST</text>
+        <line x1="480" y1="442" x2="512" y2="442" stroke="#eb6c36" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="520" y="446" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Not wired</text>
+        <rect x="616" y="436" width="12" height="12" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <text x="636" y="446" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Journal store</text>
+        <text x="32" y="476" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">BATCH BYPASS</text>
+        <text x="152" y="476" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">internal/ingest.Run already does adapter → IR → OTLP and never touches the daemon.</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <p class="eyebrow">Daemon owns</p>
+        <div class="card-header"><span class="card-dot ink"></span><h3>Durability and delivery</h3></div>
+        <ul>
+          <li>Unix socket JSON-RPC: initialize, event.log, session.flush, status.get, daemon.shutdown</li>
+          <li>Journal first, then bounded queue, then worker Accept</li>
+          <li>Does not parse Pi and does not speak OTLP</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">The hole</p>
+        <div class="card-header"><span class="card-dot coral"></span><h3>Sink is not OTLP</h3></div>
+        <ul>
+          <li>Default NopSink drops work after the journal</li>
+          <li>Test httpSink POSTs raw Envelope JSON to /v1/traces</li>
+          <li>pkg/model + otlp.Pipeline already exist on the batch path</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Adapter owns</p>
+        <div class="card-header"><span class="card-dot link"></span><h3>Pi shape only</h3></div>
+        <ul>
+          <li>internal/adapter/pi turns JSONL into model.Event</li>
+          <li>agents.Pi then wraps those events in daemon envelopes</li>
+          <li>No Claude / OpenCode adapter</li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="diagram-block">
+      <h2>Rust test layers, already in Go</h2>
+      <p class="subtitle">Your tree is the integration world. This repo nested it under <code>internal/integration/</code> instead of flattening it onto <code>internal/</code>.</p>
+      <svg viewBox="0 0 1000 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="test-world-title test-world-desc">
+        <title id="test-world-title">Integration test world around the daemon</title>
+        <desc id="test-world-desc">agentprocess World owns the daemon and mock servers. A Pi fixture agent parses events and sends them over JSON-RPC to the daemon, which posts raw envelopes to mock ingest.</desc>
+        <defs>
+          <marker id="tw-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="tw-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+        </defs>
+        <rect width="1000" height="360" fill="#f5f5f5"/>
+
+        <rect x="32" y="48" width="936" height="224" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="48" y="52" width="160" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="128" y="62" fill="rgba(45,49,66,0.40)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">AGENTPROCESS WORLD</text>
+
+        <line x1="208" y1="168" x2="240" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#tw-arrow)"/>
+        <line x1="400" y1="168" x2="432" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#tw-arrow)"/>
+        <line x1="592" y1="168" x2="624" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#tw-arrow)"/>
+        <line x1="784" y1="168" x2="816" y2="168" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#tw-arrow-link)"/>
+
+        <rect x="48" y="128" width="160" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="48" y="128" width="160" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+        <rect x="56" y="134" width="40" height="12" rx="2" fill="transparent" stroke="rgba(122,131,153,0.40)" stroke-width="0.8"/>
+        <text x="76" y="144" fill="rgba(122,131,153,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AGENT</text>
+        <text x="128" y="168" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">agents.Pi</text>
+        <text x="128" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">fixture runner</text>
+
+        <rect x="240" y="128" width="160" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="240" y="128" width="160" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="248" y="134" width="40" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="268" y="144" fill="rgba(45,49,66,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PARSE</text>
+        <text x="320" y="168" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">adapter/pi</text>
+        <text x="320" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">JSONL → Event</text>
+
+        <rect x="432" y="128" width="160" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="432" y="128" width="160" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="440" y="134" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="454" y="144" fill="rgba(45,49,66,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RPC</text>
+        <text x="512" y="168" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Daemon</text>
+        <text x="512" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">net.Pipe in tests</text>
+
+        <rect x="624" y="128" width="160" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="624" y="128" width="160" height="80" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+        <rect x="632" y="134" width="32" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,0.40)" stroke-width="0.8"/>
+        <text x="648" y="144" fill="rgba(235,108,54,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FAKE</text>
+        <text x="704" y="168" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">httpSink</text>
+        <text x="704" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">envelope JSON</text>
+
+        <rect x="816" y="128" width="136" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="816" y="128" width="136" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="824" y="134" width="32" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="840" y="144" fill="rgba(45,49,66,0.80)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HTTP</text>
+        <text x="884" y="168" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Mock ingest</text>
+        <text x="884" y="184" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">path matcher</text>
+
+        <line x1="32" y1="300" x2="968" y2="300" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="32" y="324" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+        <rect x="120" y="316" width="12" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+        <text x="140" y="326" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Test stand-in for OTLP</text>
+        <text x="32" y="348" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace">UNUSED</text>
+        <text x="104" y="348" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">inference.Server is constructed by World and never called by TestPiWorldCapturesEvents.</text>
+      </svg>
+
+      <table class="map">
+        <thead>
+          <tr>
+            <th>Rust</th>
+            <th>You proposed</th>
+            <th>Already here</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>test server</td>
+            <td>internal/testserver</td>
+            <td>internal/integration/server — one httptest.Server lifecycle</td>
+          </tr>
+          <tr>
+            <td>mock inference</td>
+            <td>internal/mockinference</td>
+            <td>internal/integration/inference — OpenAI / Anthropic mocks, unused by the current test</td>
+          </tr>
+          <tr>
+            <td>mock ingest</td>
+            <td>internal/mockingest</td>
+            <td>internal/integration/ingest — captures POST bodies and matches paths</td>
+          </tr>
+          <tr>
+            <td>agent process</td>
+            <td>internal/agentprocess</td>
+            <td>internal/integration/agentprocess — World owns daemon + mocks + cleanup</td>
+          </tr>
+          <tr>
+            <td>agents</td>
+            <td>internal/agents</td>
+            <td>internal/integration/agents — Pi fixture over JSON-RPC</td>
+          </tr>
+          <tr>
+            <td>CLI integrations</td>
+            <td>internal/adapter/pi</td>
+            <td>internal/adapter/pi — real parser, used by tests and by internal/ingest.Run</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="footer">
+      <span>FLOWTEL · DIAGRAMS/06</span>
+      <span>DEFAULT DIAGRAM-DESIGN SKIN · MATCHES 01 / 02 / 05</span>
+    </footer>
+  </div>
+</body>
+</html>
