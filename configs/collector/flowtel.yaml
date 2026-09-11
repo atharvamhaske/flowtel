@@ -29,8 +29,11 @@ processors:
 exporters:
   otlp/phoenix:
     endpoint: ${PHOENIX_OTLP_ENDPOINT}
-  otlp/braintrust:
+  otlphttp/braintrust:
     endpoint: ${BRAINTRUST_OTLP_ENDPOINT}
+    headers:
+      Authorization: "Bearer ${BRAINTRUST_API_KEY}"
+      x-bt-parent: "project_id:${BRAINTRUST_PROJECT_ID}"
   otlp/laminar:
     endpoint: ${LAMINAR_OTLP_ENDPOINT}
   otlphttp/greptime:
@@ -43,7 +46,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform/flowtel, batch]
-      exporters: [otlp/phoenix, otlp/braintrust, otlp/laminar]
+      exporters: [otlp/phoenix, otlphttp/braintrust, otlp/laminar]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, transform/flowtel, batch]
