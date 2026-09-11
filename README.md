@@ -4,9 +4,46 @@ Flowtel is a small, vendor-neutral Go library for tracing coding-harness work.
 Pi is the first adapter. The core emits OpenTelemetry spans and bounded audit
 logs with OpenInference and OTel GenAI attributes on the same spans.
 
-![Flowtel high-level architecture](diagrams/01-hld.svg)
+```mermaid
+flowchart TB
+  pi([Pi harness<br/>session JSONL / live events])
 
-![Pi to Flowtel data flow](diagrams/02-pi-data-flow.svg)
+  subgraph flowtel["FLOWTEL"]
+    batch["Batch: Pi JSONL file"]
+    live["Live: Pi -> Unix socket -> daemon journal"]
+    ir["Event IR<br/>model.Event"]
+    render["profile.Renderer<br/>spans + audit.Record"]
+  end
+
+  pipeline["OTEL DELIVERY<br/>otlp.Pipeline"]
+  boundary(["BOUNDARY<br/>Collector"])
+
+  subgraph traces["Trace backends"]
+    phoenix["Phoenix"]
+    braintrust["Braintrust"]
+    laminar["Laminar"]
+  end
+  subgraph logs["Log backends"]
+    greptime["Greptime"]
+    parseable["Parseable"]
+  end
+
+  pi --> batch
+  pi --> live
+  batch --> ir
+  live --> ir
+  ir --> render
+  render --> pipeline
+  pipeline --> boundary
+  boundary --> phoenix
+  boundary --> braintrust
+  boundary --> laminar
+  boundary --> greptime
+  boundary --> parseable
+```
+
+No SDK dependency · no proprietary attributes · no raw payloads by default.
+Flow order: `session -> llm -> tool -> permission`.
 
 The implementation follows [SPEC.md](SPEC.md). The current slice contains the
 event model, profile renderer, audit record, and official OpenTelemetry span
