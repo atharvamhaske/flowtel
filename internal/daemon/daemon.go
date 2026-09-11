@@ -381,7 +381,7 @@ func (d *Daemon) replay() error {
 		}
 		return fmt.Errorf("open daemon journal for replay: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	delivered := readCheckpoint(d.config.DataDir)
 	d.delivered.Store(delivered)
 	scanner := bufio.NewScanner(file)
@@ -444,10 +444,7 @@ func (d *Daemon) waitSession(ctx context.Context, sessionID string, timeoutMS in
 			d.stateMu.Lock()
 			failed := d.sessions[sessionID].LastError != ""
 			d.stateMu.Unlock()
-			if failed {
-				return false
-			}
-			return true
+			return !failed
 		}
 		select {
 		case <-ctx.Done():

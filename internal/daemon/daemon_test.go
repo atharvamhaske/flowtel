@@ -27,8 +27,8 @@ func TestDaemonWireProtocol(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	serverSide, connection := net.Pipe()
-	defer serverSide.Close()
-	defer connection.Close()
+	defer func() { _ = serverSide.Close() }()
+	defer func() { _ = connection.Close() }()
 	go server.ServeConn(ctx, serverSide)
 	scanner := bufio.NewScanner(connection)
 	send := func(request map[string]any) map[string]any {
@@ -66,7 +66,7 @@ func TestDaemonWireProtocol(t *testing.T) {
 	if shutdownResponse["error"] != nil {
 		t.Fatalf("shutdown response = %v", shutdownResponse)
 	}
-	server.Close()
+	_ = server.Close()
 	data, err := os.ReadFile(filepath.Join(config.DataDir, "events.jsonl"))
 	if err != nil {
 		t.Fatalf("read journal: %v", err)
@@ -121,7 +121,7 @@ func TestReplayDeliversPending(t *testing.T) {
 	if waitFlush(t, first, "s1", 1000) {
 		t.Fatal("first flush succeeded, want sink failure")
 	}
-	first.Close()
+	_ = first.Close()
 	recorded := &recordSink{}
 	second, err := daemon.New(config, recorded)
 	if err != nil {
@@ -130,7 +130,7 @@ func TestReplayDeliversPending(t *testing.T) {
 	if !waitFlush(t, second, "s1", 1000) {
 		t.Fatalf("replay flush failed: %+v", second.Status())
 	}
-	second.Close()
+	_ = second.Close()
 	if recorded.len() != 1 {
 		t.Fatalf("replayed = %d, want 1", recorded.len())
 	}
@@ -148,14 +148,14 @@ func TestReplaySkipsDelivered(t *testing.T) {
 	if !waitFlush(t, first, "s1", 1000) {
 		t.Fatalf("first flush failed: %+v", first.Status())
 	}
-	first.Close()
+	_ = first.Close()
 	recorded := &recordSink{}
 	second, err := daemon.New(config, recorded)
 	if err != nil {
 		t.Fatalf("replay New() error = %v", err)
 	}
 	time.Sleep(20 * time.Millisecond)
-	second.Close()
+	_ = second.Close()
 	if recorded.len() != 0 {
 		t.Fatalf("replayed = %d, want 0", recorded.len())
 	}
@@ -168,7 +168,7 @@ func TestFlushTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 	logEvent(t, server, "s1")
 	if waitFlush(t, server, "s1", 50) {
 		t.Fatal("flush succeeded, want timeout")
@@ -203,7 +203,7 @@ func TestSinkFailureVisible(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 	logEvent(t, server, "s1")
 	if waitFlush(t, server, "s1", 1000) {
 		t.Fatal("flush succeeded, want sink failure")
@@ -222,8 +222,8 @@ func logEvent(t *testing.T, server *daemon.Daemon, sessionID string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	serverSide, connection := net.Pipe()
-	defer serverSide.Close()
-	defer connection.Close()
+	defer func() { _ = serverSide.Close() }()
+	defer func() { _ = connection.Close() }()
 	go server.ServeConn(ctx, serverSide)
 	scanner := bufio.NewScanner(connection)
 	send := func(request map[string]any) {
@@ -248,8 +248,8 @@ func waitFlush(t *testing.T, server *daemon.Daemon, sessionID string, timeoutMS 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	serverSide, connection := net.Pipe()
-	defer serverSide.Close()
-	defer connection.Close()
+	defer func() { _ = serverSide.Close() }()
+	defer func() { _ = connection.Close() }()
 	go server.ServeConn(ctx, serverSide)
 	scanner := bufio.NewScanner(connection)
 	send := func(request map[string]any) map[string]any {

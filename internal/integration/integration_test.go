@@ -25,7 +25,7 @@ func TestPiWorldCapturesEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	input := strings.NewReader(`{"type":"session","id":"s1"}
 {"type":"message","id":"m1","sessionId":"s1","model":"test-model","provider":"test-provider","message":{"role":"assistant","usage":{"input":2,"output":1}}}
 `)
@@ -48,7 +48,7 @@ func TestPiWorldSinkFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	err = (agents.Pi{Profile: model.ProfileBoth, FlushMS: 1000}).Run(context.Background(), connection, strings.NewReader(piFixture))
 	if err == nil {
 		t.Fatal("run pi: error = nil, want sink failure")
@@ -69,7 +69,7 @@ func TestPiWorldFlushTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	err = (agents.Pi{Profile: model.ProfileBoth, FlushMS: 50}).Run(context.Background(), connection, strings.NewReader(piFixture))
 	if err == nil {
 		t.Fatal("run pi: error = nil, want flush timeout")
@@ -86,11 +86,11 @@ func TestPiWorldShutdownDrains(t *testing.T) {
 		t.Fatalf("create connection: %v", err)
 	}
 	if err := (agents.Pi{Profile: model.ProfileBoth}).Run(context.Background(), connection, strings.NewReader(piFixture)); err != nil {
-		connection.Close()
+		_ = connection.Close()
 		world.Close()
 		t.Fatalf("run pi: %v", err)
 	}
-	connection.Close()
+	_ = connection.Close()
 	world.Close()
 	if world.Daemon.Status().Queued != 0 {
 		t.Fatalf("queued = %d, want 0 after shutdown", world.Daemon.Status().Queued)
@@ -119,7 +119,7 @@ func TestPiProcessCapturesEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	if err := (agents.Pi{Profile: model.ProfileBoth, FlushMS: 5000}).Run(ctx, connection, bytes.NewReader(output)); err != nil {
 		t.Fatalf("forward pi events: %v\nstdout=%s", err, output)
 	}
