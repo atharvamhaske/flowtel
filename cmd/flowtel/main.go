@@ -33,7 +33,14 @@ func main() {
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "usage: flowtel version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve")
+	if len(os.Args) >= 2 && os.Args[1] == "status" {
+		if err := runStatus(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "flowtel: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	fmt.Fprintln(os.Stderr, "usage: flowtel version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH]")
 	os.Exit(2)
 }
 

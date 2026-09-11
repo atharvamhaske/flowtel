@@ -3,4 +3,4 @@ node_modules/
 .desloppify/
 bin/
 coverage.out
-flowtel
+/flowtel
