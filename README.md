@@ -4,6 +4,10 @@ Flowtel is a small, vendor-neutral Go library for tracing coding-harness work.
 Pi is the first adapter. The core emits OpenTelemetry spans and bounded audit
 logs with OpenInference and OTel GenAI attributes on the same spans.
 
+![Flowtel high-level architecture](diagrams/01-hld.svg)
+
+![Pi to Flowtel data flow](diagrams/02-pi-data-flow.svg)
+
 The implementation follows [SPEC.md](SPEC.md). The current slice contains the
 event model, profile renderer, audit record, and official OpenTelemetry span
 recorder. Pi JSONL parsing, CLI wiring, and compatibility fixtures are next.
