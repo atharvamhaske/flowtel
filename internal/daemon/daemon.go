@@ -146,6 +146,10 @@ func (d *Daemon) Serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen on daemon socket: %w", err)
 	}
+	if err := os.Chmod(d.config.SocketPath, 0o600); err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("secure daemon socket: %w", err)
+	}
 	d.listener = listener
 	d.started = time.Now()
 	defer d.close()

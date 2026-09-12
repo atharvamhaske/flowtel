@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,6 +16,49 @@ import (
 
 	"github.com/atharvamhaske/flowtel/internal/daemon"
 )
+
+func TestServeSocketIsOwnerOnly(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	// AF_UNIX caps sun_path at ~104 bytes on macOS; t.TempDir() nests deep
+	// enough under /var/folders to blow past that, so the socket itself
+	// lives directly under /tmp instead of the per-test temp directory.
+	socketPath := filepath.Join("/tmp", fmt.Sprintf("flowtel-test-%d.sock", os.Getpid()))
+	t.Cleanup(func() { _ = os.Remove(socketPath) })
+	config := daemon.Config{SocketPath: socketPath, DataDir: filepath.Join(root, "data"), DaemonVersion: "test", Sources: []string{"debug"}, MaxLineBytes: 4096, QueueSize: 8}
+	server, err := daemon.New(config, nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(ctx) }()
+	deadline := time.Now().Add(time.Second)
+	var info os.FileInfo
+	for time.Now().Before(deadline) {
+		info, err = os.Stat(socketPath)
+		if err == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err != nil {
+		select {
+		case early := <-serveErr:
+			t.Fatalf("stat daemon socket: %v (Serve() returned early: %v)", err, early)
+		default:
+		}
+		t.Fatalf("stat daemon socket: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("socket permissions = %o, want 0600", perm)
+	}
+	cancel()
+	if err := <-serveErr; err != nil {
+		t.Fatalf("Serve() error = %v", err)
+	}
+}
 
 func TestDaemonWireProtocol(t *testing.T) {
 	t.Parallel()
