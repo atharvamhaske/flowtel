@@ -1,0 +1,41 @@
+receivers:
+  otlp:
+    protocols:
+      http: {}
+      grpc: {}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  transform/flowtel:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "gen_ai.prompt")
+          - delete_key(attributes, "gen_ai.completion")
+          - delete_key(attributes, "gen_ai.tool.call.arguments")
+          - delete_key(attributes, "gen_ai.tool.call.result")
+    log_statements:
+      - context: log
+        statements:
+          - delete_key(attributes, "gen_ai.prompt")
+          - delete_key(attributes, "gen_ai.completion")
+          - delete_key(attributes, "gen_ai.tool.call.arguments")
+          - delete_key(attributes, "gen_ai.tool.call.result")
+  batch: {}
+
+exporters:
+  otlphttp/braintrust:
+    endpoint: ${BRAINTRUST_OTLP_ENDPOINT}
+    headers:
+      Authorization: "Bearer ${BRAINTRUST_API_KEY}"
+      x-bt-parent: "project_id:${BRAINTRUST_PROJECT_ID}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/flowtel, batch]
+      exporters: [otlphttp/braintrust]
