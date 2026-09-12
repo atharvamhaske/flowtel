@@ -1,4 +1,4 @@
-.PHONY: tidy test vet lint ci
+.PHONY: tidy test vet lint smoke ci
 
 tidy:
 	go mod tidy
@@ -13,4 +13,7 @@ vet:
 lint:
 	golangci-lint run ./...
 
-ci: tidy test vet lint
+smoke:
+	./scripts/smoke-e2e.sh
+
+ci: tidy test vet lint smoke
