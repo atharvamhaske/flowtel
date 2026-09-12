@@ -296,6 +296,11 @@ func (d *Daemon) dispatch(ctx context.Context, request Request) (Response, bool)
 	return response, true
 }
 
+// append journals an envelope then enqueues it under the same lock, so
+// queue order always matches journal line order even across concurrent
+// connections. It enqueues under the worker's own context rather than the
+// caller's: the line is already durable once written, so a per-request
+// cancellation must not abandon it mid-queue — only the daemon closing may.
 func (d *Daemon) append(ctx context.Context, envelope Envelope) error {
 	select {
 	case <-ctx.Done():
@@ -307,16 +312,16 @@ func (d *Daemon) append(ctx context.Context, envelope Envelope) error {
 		return fmt.Errorf("encode event: %w", err)
 	}
 	d.journalMu.Lock()
+	defer d.journalMu.Unlock()
 	_, writeErr := d.journal.Write(append(encoded, '\n'))
 	if writeErr == nil {
 		writeErr = d.journal.Sync()
 	}
-	d.journalMu.Unlock()
 	if writeErr != nil {
 		return fmt.Errorf("journal event: %w", writeErr)
 	}
 	d.stored.Add(1)
-	return d.enqueue(ctx, envelope)
+	return d.enqueue(d.workerCtx, envelope)
 }
 
 func (d *Daemon) enqueue(ctx context.Context, envelope Envelope) error {
@@ -331,9 +336,12 @@ func (d *Daemon) enqueue(ctx context.Context, envelope Envelope) error {
 	case d.queue <- envelope:
 		return nil
 	case <-ctx.Done():
+		// ponytail: a wedged sink fills the queue and stalls every writer
+		// (journalMu is held across this select) until it clears or the
+		// daemon closes; per-session queues or a bounded drop policy if
+		// a single broken backend shouldn't be allowed to halt every
+		// session's ingestion.
 		return fmt.Errorf("queue event: %w", ctx.Err())
-	case <-d.workerCtx.Done():
-		return fmt.Errorf("queue event: daemon is closed")
 	}
 }
 
@@ -342,13 +350,18 @@ func (d *Daemon) runWorker() {
 	for {
 		select {
 		case envelope := <-d.queue:
-			d.deliver(d.workerCtx, envelope)
+			if !d.deliver(d.workerCtx, envelope) {
+				return
+			}
 		case <-d.workerCtx.Done():
 			drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			for {
 				select {
 				case envelope := <-d.queue:
-					d.deliver(drainCtx, envelope)
+					if !d.deliver(drainCtx, envelope) {
+						cancel()
+						return
+					}
 				default:
 					cancel()
 					return
@@ -358,22 +371,46 @@ func (d *Daemon) runWorker() {
 	}
 }
 
-func (d *Daemon) deliver(ctx context.Context, envelope Envelope) {
-	err := d.sink.Accept(ctx, envelope)
-	d.stateMu.Lock()
-	session := d.sessions[envelope.SessionID]
-	session.Queued--
-	if err != nil {
-		session.LastError = err.Error()
-		d.lastError = err.Error()
-	} else {
+const (
+	deliverInitialBackoff = 50 * time.Millisecond
+	deliverMaxBackoff     = 5 * time.Second
+)
+
+// deliver retries a failed Accept with capped exponential backoff instead
+// of dropping the envelope, reporting whether it actually delivered (true)
+// or was abandoned by ctx cancellation mid-retry (false). Callers MUST
+// stop the worker on a false return instead of moving on to the next
+// envelope, or a later envelope's success would checkpoint past this one.
+func (d *Daemon) deliver(ctx context.Context, envelope Envelope) bool {
+	backoff := deliverInitialBackoff
+	for {
+		err := d.sink.Accept(ctx, envelope)
+		d.stateMu.Lock()
+		session := d.sessions[envelope.SessionID]
+		if err != nil {
+			session.LastError = err.Error()
+			d.lastError = err.Error()
+			d.sessions[envelope.SessionID] = session
+			d.stateMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return false
+			case <-time.After(backoff):
+			}
+			if backoff *= 2; backoff > deliverMaxBackoff {
+				backoff = deliverMaxBackoff
+			}
+			continue
+		}
+		session.Queued--
 		session.LastError = ""
 		d.lastError = ""
+		d.sessions[envelope.SessionID] = session
 		d.delivered.Add(1)
 		_ = d.writeCheckpoint()
+		d.stateMu.Unlock()
+		return true
 	}
-	d.sessions[envelope.SessionID] = session
-	d.stateMu.Unlock()
 }
 
 func (d *Daemon) replay() error {

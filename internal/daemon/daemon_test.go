@@ -153,6 +153,143 @@ func (s slowSink) Accept(ctx context.Context, envelope daemon.Envelope) error {
 	}
 }
 
+// flakySink fails exactly one Accept call (by call number, across the
+// whole sink lifetime) and records every envelope it accepts. It
+// reproduces the exact shape of the delivery-checkpoint bug: one failure
+// sitting between two successes must not let the checkpoint skip past
+// the failed envelope once it eventually succeeds via retry.
+type flakySink struct {
+	mu        sync.Mutex
+	failOn    int
+	calls     int
+	envelopes []daemon.Envelope
+}
+
+func (s *flakySink) Accept(_ context.Context, envelope daemon.Envelope) error {
+	s.mu.Lock()
+	s.calls++
+	call := s.calls
+	s.mu.Unlock()
+	if call == s.failOn {
+		return errors.New("flaky failure")
+	}
+	s.mu.Lock()
+	s.envelopes = append(s.envelopes, envelope)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *flakySink) recorded() []daemon.Envelope {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]daemon.Envelope(nil), s.envelopes...)
+}
+
+// keyedFailSink fails only for one named event, permanently, and records
+// everything else. Unlike flakySink (fails by call count), this lets a
+// test guarantee a specific envelope is the one stuck retrying forever
+// while a later envelope in the same queue would succeed if it were ever
+// attempted.
+type keyedFailSink struct {
+	mu        sync.Mutex
+	failEvent string
+	envelopes []daemon.Envelope
+}
+
+func (s *keyedFailSink) Accept(_ context.Context, envelope daemon.Envelope) error {
+	if envelope.Event == s.failEvent {
+		return errors.New("permanently broken for this event")
+	}
+	s.mu.Lock()
+	s.envelopes = append(s.envelopes, envelope)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *keyedFailSink) recorded() []daemon.Envelope {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]daemon.Envelope(nil), s.envelopes...)
+}
+
+func logNamedEvent(t *testing.T, server *daemon.Daemon, sessionID, eventName string) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverSide, connection := net.Pipe()
+	defer func() { _ = serverSide.Close() }()
+	defer func() { _ = connection.Close() }()
+	go server.ServeConn(ctx, serverSide)
+	scanner := bufio.NewScanner(connection)
+	send := func(request map[string]any) {
+		t.Helper()
+		encoded, err := json.Marshal(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := connection.Write(append(encoded, '\n')); err != nil {
+			t.Fatal(err)
+		}
+		if !scanner.Scan() {
+			t.Fatalf("response missing: %v", scanner.Err())
+		}
+	}
+	send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocol_version": 1, "client": map[string]any{"source": "debug"}}})
+	send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "event.log", "params": map[string]any{"source": "debug", "session_id": sessionID, "event": eventName, "payload": map[string]any{"ok": true}}})
+}
+
+func TestAbandonedDeliveryDoesNotLetLaterEventsCheckpointPastIt(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	sink := &keyedFailSink{failEvent: "broken"}
+	first, err := daemon.New(testConfig(root), sink)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	logNamedEvent(t, first, "s1", "broken") // worker gets stuck retrying this
+	logNamedEvent(t, first, "s1", "fine")   // would succeed instantly if ever attempted
+	time.Sleep(50 * time.Millisecond)       // let the worker reach the backoff wait for "broken"
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if got := len(sink.recorded()); got != 0 {
+		t.Fatalf("recorded = %d, want 0 (later event must not be delivered while an earlier one is stuck)", got)
+	}
+
+	recorded := &recordSink{}
+	second, err := daemon.New(testConfig(root), recorded)
+	if err != nil {
+		t.Fatalf("replay New() error = %v", err)
+	}
+	defer func() { _ = second.Close() }()
+	if !waitFlush(t, second, "s1", 2000) {
+		t.Fatalf("replay flush failed: %+v", second.Status())
+	}
+	if got := recorded.len(); got != 2 {
+		t.Fatalf("replayed = %d, want 2 (both must recover in order)", got)
+	}
+}
+
+func TestDeliveryRetriesInsteadOfSkipping(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	sink := &flakySink{failOn: 2}
+	server, err := daemon.New(testConfig(root), sink)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer func() { _ = server.Close() }()
+	logEvent(t, server, "s1")
+	logEvent(t, server, "s1")
+	logEvent(t, server, "s1")
+	if !waitFlush(t, server, "s1", 2000) {
+		t.Fatalf("flush failed: %+v", server.Status())
+	}
+	if got := len(sink.recorded()); got != 3 {
+		t.Fatalf("delivered = %d, want 3 (the failed call must retry, not be dropped)", got)
+	}
+}
+
 func TestReplayDeliversPending(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
