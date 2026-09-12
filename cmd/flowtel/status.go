@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -61,8 +62,7 @@ func (c *statusClient) fetch() (daemon.Status, error) {
 	defer func() { _ = connection.Close() }()
 	_ = connection.SetDeadline(time.Now().Add(2 * time.Second))
 
-	scanner := bufio.NewScanner(connection)
-	scanner.Buffer(make([]byte, 4096), daemon.DefaultMaxLineBytes)
+	scanner := newDaemonScanner(connection)
 
 	if err := sendRequest(connection, 1, "initialize", map[string]any{
 		"protocol_version": daemon.ProtocolVersion,
@@ -86,6 +86,12 @@ func (c *statusClient) fetch() (daemon.Status, error) {
 		return daemon.Status{}, fmt.Errorf("decode daemon status: %w", err)
 	}
 	return status, nil
+}
+
+func newDaemonScanner(connection net.Conn) *bufio.Scanner {
+	scanner := bufio.NewScanner(connection)
+	scanner.Buffer(make([]byte, 4096), daemon.DefaultMaxLineBytes)
+	return scanner
 }
 
 func sendRequest(connection net.Conn, id int, method string, params any) error {
@@ -190,9 +196,5 @@ func (m statusModel) View() string {
 	if m.status.LastError != "" {
 		lines = append(lines, statusError.Render("error   "+m.status.LastError))
 	}
-	body := lines[0]
-	for _, line := range lines[1:] {
-		body += "\n" + line
-	}
-	return statusBox.Render(body) + "\nq to quit\n"
+	return statusBox.Render(strings.Join(lines, "\n")) + "\nq to quit\n"
 }

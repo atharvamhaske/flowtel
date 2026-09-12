@@ -40,7 +40,14 @@ func main() {
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "usage: flowtel version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH]")
+	if len(os.Args) >= 2 && os.Args[1] == "pi" {
+		if err := runPi(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "flowtel: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	fmt.Fprintln(os.Stderr, "usage: flowtel version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH] | flowtel pi run [--socket PATH] [pi args...]")
 	os.Exit(2)
 }
 
