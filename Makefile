@@ -1,4 +1,4 @@
-.PHONY: tidy test vet lint smoke ci
+.PHONY: tidy test vet lint smoke collector ci
 
 tidy:
 	go mod tidy
@@ -15,5 +15,8 @@ lint:
 
 smoke:
 	./scripts/smoke-e2e.sh
+
+collector:
+	./scripts/collector-up.sh
 
 ci: tidy test vet lint smoke
