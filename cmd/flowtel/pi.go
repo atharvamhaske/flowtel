@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -65,9 +66,11 @@ func runPi(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load flowtel config: %w", err)
 	}
+	slog.Debug("dialing daemon socket", "socket", *socketPath, "session_file", sessionFile)
 	if err := forwardPiSession(*socketPath, sessionFile, cfg); err != nil {
 		return fmt.Errorf("forward pi session to daemon: %w", err)
 	}
+	slog.Info("forwarded pi session to daemon", "session_file", sessionFile)
 	return runErr
 }
 
@@ -115,6 +118,7 @@ func forwardPiSession(socketPath, sessionFile string, cfg config.Config) error {
 	if len(result.Events) == 0 {
 		return fmt.Errorf("pi session had no events to forward")
 	}
+	slog.Info("forwarding events to daemon", "count", len(result.Events))
 
 	connection, err := net.DialTimeout("unix", socketPath, 2*time.Second)
 	if err != nil {

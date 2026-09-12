@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,39 +16,47 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "version" {
+	debug := os.Getenv("FLOWTEL_DEBUG") != ""
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--debug" {
+		debug = true
+		args = args[1:]
+	}
+	slog.SetDefault(newLogger(debug))
+
+	if len(args) == 1 && args[0] == "version" {
 		fmt.Printf("%s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
 		return
 	}
-	if len(os.Args) >= 2 && os.Args[1] == "ingest" {
-		if err := runIngest(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "flowtel: %v\n", err)
+	if len(args) >= 1 && args[0] == "ingest" {
+		if err := runIngest(args[1:]); err != nil {
+			slog.Error(err.Error())
 			os.Exit(1)
 		}
 		return
 	}
-	if len(os.Args) >= 2 && os.Args[1] == "daemon" {
-		if err := runDaemon(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "flowtel: %v\n", err)
+	if len(args) >= 1 && args[0] == "daemon" {
+		if err := runDaemon(args[1:]); err != nil {
+			slog.Error(err.Error())
 			os.Exit(1)
 		}
 		return
 	}
-	if len(os.Args) >= 2 && os.Args[1] == "status" {
-		if err := runStatus(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "flowtel: %v\n", err)
+	if len(args) >= 1 && args[0] == "status" {
+		if err := runStatus(args[1:]); err != nil {
+			slog.Error(err.Error())
 			os.Exit(1)
 		}
 		return
 	}
-	if len(os.Args) >= 2 && os.Args[1] == "pi" {
-		if err := runPi(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "flowtel: %v\n", err)
+	if len(args) >= 1 && args[0] == "pi" {
+		if err := runPi(args[1:]); err != nil {
+			slog.Error(err.Error())
 			os.Exit(1)
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "usage: flowtel version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH] | flowtel pi run [--socket PATH] [pi args...]")
+	fmt.Fprintln(os.Stderr, "usage: flowtel [--debug] version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH] | flowtel pi run [--socket PATH] [pi args...]")
 	os.Exit(2)
 }
 
@@ -74,6 +83,7 @@ func runDaemon(args []string) error {
 	if err != nil {
 		return err
 	}
+	slog.Info("daemon starting", "socket", config.SocketPath, "data_dir", config.DataDir)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return server.Serve(ctx)
