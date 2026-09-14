@@ -520,12 +520,16 @@ func (d *Daemon) status() Status {
 	for _, session := range d.sessions {
 		sessions = append(sessions, session)
 	}
+	// d.lastError must be read under stateMu too — deliver() writes it
+	// under the same lock, and reading it after Unlock() here is exactly
+	// the unprotected access -race caught between this and deliver().
+	lastError := d.lastError
 	d.stateMu.Unlock()
 	uptime := int64(0)
 	if !d.started.IsZero() {
 		uptime = time.Since(d.started).Milliseconds()
 	}
-	return Status{DaemonVersion: d.config.DaemonVersion, Protocol: ProtocolVersion, UptimeMS: uptime, Queued: len(d.queue), EventsStored: d.stored.Load(), LastError: d.lastError, Sessions: sessions}
+	return Status{DaemonVersion: d.config.DaemonVersion, Protocol: ProtocolVersion, UptimeMS: uptime, Queued: len(d.queue), EventsStored: d.stored.Load(), LastError: lastError, Sessions: sessions}
 }
 
 func (d *Daemon) pending(sessionID string) int {
