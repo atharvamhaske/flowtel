@@ -19,8 +19,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "smoke: building flowtel"
-go build -o "$tmp/flowtel" "$root/cmd/flowtel"
+echo "smoke: building flowctl"
+go build -o "$tmp/flowctl" "$root/cmd/flowtel"
 
 echo "smoke: writing fake pi"
 mkdir -p "$tmp/sessions"
@@ -32,7 +32,7 @@ EOF
 chmod +x "$tmp/fake-pi"
 
 echo "smoke: starting daemon"
-"$tmp/flowtel" daemon serve --socket "$tmp/d.sock" --data-dir "$tmp/data" &
+"$tmp/flowctl" daemon serve --socket "$tmp/d.sock" --data-dir "$tmp/data" &
 daemon_pid=$!
 
 deadline=$((SECONDS + 5))
@@ -44,14 +44,14 @@ until [[ -S "$tmp/d.sock" ]]; do
   sleep 0.05
 done
 
-echo "smoke: running flowtel pi run against the fake binary"
+echo "smoke: running flowctl pi run against the fake binary"
 FLOWTEL_PI="$tmp/fake-pi" \
   FLOWTEL_HARNESS=pi \
   FLOWTEL_ATTRIBUTE_PROFILE=both \
   PI_CODING_AGENT_SESSION_DIR="$tmp/sessions" \
-  "$tmp/flowtel" pi run --socket "$tmp/d.sock" -- ignored-args
+  "$tmp/flowctl" pi run --socket "$tmp/d.sock" -- ignored-args
 
-status="$("$tmp/flowtel" status --socket "$tmp/d.sock")"
+status="$("$tmp/flowctl" status --socket "$tmp/d.sock")"
 echo "smoke: status = $status"
 
 events_stored="$(echo "$status" | sed -n 's/.*events_stored=\([0-9]*\).*/\1/p')"

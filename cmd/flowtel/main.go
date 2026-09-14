@@ -63,13 +63,13 @@ func main() {
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "usage: flowtel [--debug] version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH] | flowtel pi run [--socket PATH] [pi args...] | flowtel doctor [--socket PATH]")
+	fmt.Fprintln(os.Stderr, "usage: flowctl [--debug] version | flowctl ingest --input PATH [--best-effort] | flowctl daemon serve | flowctl status [--socket PATH] | flowctl pi run [--socket PATH] [pi args...] | flowctl doctor [--socket PATH]")
 	os.Exit(2)
 }
 
 func runDaemon(args []string) error {
 	if len(args) == 0 || args[0] != "serve" {
-		return fmt.Errorf("usage: flowtel daemon serve [--socket PATH] [--data-dir PATH]")
+		return fmt.Errorf("usage: flowctl daemon serve [--socket PATH] [--data-dir PATH]")
 	}
 	defaults, err := daemon.DefaultConfig()
 	if err != nil {

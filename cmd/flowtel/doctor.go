@@ -105,7 +105,7 @@ func checkDaemonSocket(socketPath string) checkResult {
 	client := &statusClient{socketPath: socketPath}
 	status, err := client.fetch()
 	if err != nil {
-		return checkResult{status: statusWarn, message: fmt.Sprintf("not running at %s (start it with `flowtel daemon serve`)", socketPath)}
+		return checkResult{status: statusWarn, message: fmt.Sprintf("not running at %s (start it with `flowctl daemon serve`)", socketPath)}
 	}
 	return checkResult{status: statusPass, message: fmt.Sprintf("reachable, version %s, queued=%d", status.DaemonVersion, status.Queued)}
 }

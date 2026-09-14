@@ -136,10 +136,10 @@ func readResponse(scanner *bufio.Scanner) (json.RawMessage, error) {
 
 func formatStatusLine(status daemon.Status) string {
 	if status.LastError != "" {
-		return fmt.Sprintf("flowtel daemon %s: queued=%d events_stored=%d last_error=%q",
+		return fmt.Sprintf("flowctl daemon %s: queued=%d events_stored=%d last_error=%q",
 			status.DaemonVersion, status.Queued, status.EventsStored, status.LastError)
 	}
-	return fmt.Sprintf("flowtel daemon %s: queued=%d events_stored=%d",
+	return fmt.Sprintf("flowctl daemon %s: queued=%d events_stored=%d",
 		status.DaemonVersion, status.Queued, status.EventsStored)
 }
 
