@@ -9,8 +9,8 @@ flowchart TB
   pi([Pi harness<br/>session JSONL / live events])
 
   subgraph flowtel["FLOWTEL"]
-    batch["Batch: flowtel ingest"]
-    live["Live: flowtel pi run -> daemon journal"]
+    batch["Batch: flowctl ingest"]
+    live["Live: flowctl pi run -> daemon journal"]
     ir["Event IR<br/>model.Event"]
     render["profile.Renderer<br/>spans + audit.Record + metrics"]
   end
@@ -67,8 +67,9 @@ the Collector's logs.
 
 The implementation follows [SPEC.md](SPEC.md). The daemon (`internal/daemon`),
 Pi adapter, profile renderer, audit record, and OTel span/log/metric export
-are all implemented. CLI: `flowtel ingest` (batch), `flowtel daemon serve` +
-`flowtel pi run` (live), `flowtel status` (live TUI).
+are all implemented. CLI (binary `flowctl`): `flowctl ingest` (batch),
+`flowctl daemon serve` + `flowctl pi run` (live), `flowctl status` (live TUI),
+`flowctl doctor` (diagnostics).
 
 Runtime structs are in `internal/config` and focused reusable bounds are in
 `internal/bounds`. Values come from environment variables such as

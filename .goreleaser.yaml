@@ -7,7 +7,7 @@ before:
 builds:
   - id: flowtel
     main: ./cmd/flowtel
-    binary: flowtel
+    binary: flowctl
     ldflags:
       - -s -w
       - -X github.com/atharvamhaske/flowtel/internal/version.Version={{.Version}}
