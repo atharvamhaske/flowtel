@@ -27,6 +27,29 @@ func TestParserParse(t *testing.T) {
 	}
 }
 
+func TestParserCapturesCacheWriteAndCost(t *testing.T) {
+	// Real usage shape from an actual pi session: usage.cacheWrite and a
+	// nested usage.cost block, neither of which the parser used to read.
+	input := strings.NewReader(`{"type":"session","id":"s1","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"message","id":"m1","parentId":"s1","sessionId":"s1","model":"model-1","provider":"provider-1","message":{"role":"assistant","usage":{"input":2,"output":1,"cacheRead":0,"cacheWrite":5,"cost":{"input":0.001,"output":0.002,"cacheRead":0,"cacheWrite":0.0005,"total":0.0035}}}}
+`)
+	result, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(result.Events))
+	}
+	event := result.Events[1]
+	if event.CacheWriteTokens != 5 {
+		t.Fatalf("CacheWriteTokens = %d, want 5", event.CacheWriteTokens)
+	}
+	if event.CostInput != 0.001 || event.CostOutput != 0.002 || event.CostCacheWrite != 0.0005 || event.CostTotal != 0.0035 {
+		t.Fatalf("cost fields = input=%v output=%v cacheWrite=%v total=%v, want 0.001/0.002/0.0005/0.0035",
+			event.CostInput, event.CostOutput, event.CostCacheWrite, event.CostTotal)
+	}
+}
+
 func TestParserCapturesLLMError(t *testing.T) {
 	// Real shape observed from an actual pi session where a provider
 	// call failed (github-copilot returning 421 Misdirected Request).

@@ -60,6 +60,33 @@ func TestRendererOpenInferenceOnlyHasSessionAndTokens(t *testing.T) {
 	}
 }
 
+func TestRendererEmitsCostAndCacheWriteUnderOpenInference(t *testing.T) {
+	event := model.Event{
+		ID: "llm-1", SessionID: "session-1", Harness: "pi",
+		Profile: model.ProfileOpenInference, Kind: model.KindLLM, Name: "llm",
+		Model: "model-1", Provider: "provider-1",
+		CacheWriteTokens: 4,
+		CostInput:        0.001, CostOutput: 0.002, CostCacheRead: 0.0001, CostCacheWrite: 0.0002, CostTotal: 0.0033,
+	}
+	attributes, err := profile.New().Render(event)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	checks := map[string]any{
+		"llm.token_count.prompt_details.cache_write": int64(4),
+		"llm.cost.prompt":                     0.001,
+		"llm.cost.completion":                 0.002,
+		"llm.cost.prompt_details.cache_read":  0.0001,
+		"llm.cost.prompt_details.cache_write": 0.0002,
+		"llm.cost.total":                      0.0033,
+	}
+	for key, expected := range checks {
+		if got := attributes[key]; got != expected {
+			t.Errorf("attribute %q = %v, want %v", key, got, expected)
+		}
+	}
+}
+
 func TestRendererHonorsProfile(t *testing.T) {
 	event := model.Event{
 		ID: "llm-1", Harness: "pi", Profile: model.ProfileOpenInference,

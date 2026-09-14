@@ -57,6 +57,8 @@ func toAttributes(values map[string]any) []attribute.KeyValue {
 			attributes = append(attributes, attribute.String(key, typed))
 		case int64:
 			attributes = append(attributes, attribute.Int64(key, typed))
+		case float64:
+			attributes = append(attributes, attribute.Float64(key, typed))
 		}
 	}
 	return attributes

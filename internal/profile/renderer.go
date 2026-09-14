@@ -56,6 +56,26 @@ func (Renderer) Render(event model.Event) (map[string]any, error) {
 		if event.CacheReadTokens != 0 {
 			attributes["llm.token_count.prompt_details.cache_read"] = event.CacheReadTokens
 		}
+		if event.CacheWriteTokens != 0 {
+			attributes["llm.token_count.prompt_details.cache_write"] = event.CacheWriteTokens
+		}
+		// Cost is an OpenInference-only concept — GenAI semconv has no
+		// equivalent attribute as of writing.
+		if event.CostInput != 0 {
+			attributes["llm.cost.prompt"] = event.CostInput
+		}
+		if event.CostOutput != 0 {
+			attributes["llm.cost.completion"] = event.CostOutput
+		}
+		if event.CostCacheRead != 0 {
+			attributes["llm.cost.prompt_details.cache_read"] = event.CostCacheRead
+		}
+		if event.CostCacheWrite != 0 {
+			attributes["llm.cost.prompt_details.cache_write"] = event.CostCacheWrite
+		}
+		if event.CostTotal != 0 {
+			attributes["llm.cost.total"] = event.CostTotal
+		}
 	}
 	if event.Profile == model.ProfileGenAI || event.Profile == model.ProfileBoth {
 		attributes["gen_ai.operation.name"] = genAIOperation(event.Kind)

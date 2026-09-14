@@ -176,7 +176,8 @@ func (p Parser) eventsFromEntry(entry map[string]any, state *parseState, lineNum
 		message, _ := firstMap(native["message"], entry["message"])
 		event.Model = firstString(event.Model, stringValue(message, "model"))
 		event.Provider = firstString(event.Provider, stringValue(message, "provider"))
-		event.InputTokens, event.OutputTokens, event.ReasoningTokens, event.CacheReadTokens = usageTokens(entry, native, message)
+		event.InputTokens, event.OutputTokens, event.ReasoningTokens, event.CacheReadTokens, event.CacheWriteTokens = usageTokens(entry, native, message)
+		event.CostInput, event.CostOutput, event.CostCacheRead, event.CostCacheWrite, event.CostTotal = usageCost(entry, native, message)
 		if stringValue(message, "stopReason") == "error" {
 			event.Error = firstString(stringValue(message, "errorMessage"), "llm call failed")
 		}
@@ -307,20 +308,50 @@ func numberValue(values map[string]any, keys ...string) int64 {
 	return 0
 }
 
+func floatValue(values map[string]any, keys ...string) float64 {
+	for _, key := range keys {
+		switch value := values[key].(type) {
+		case float64:
+			return value
+		case int64:
+			return float64(value)
+		}
+	}
+	return 0
+}
+
 func boolValue(values map[string]any, key string) bool {
 	value, ok := values[key].(bool)
 	return ok && value
 }
 
-func usageTokens(entry, native, message map[string]any) (input, output, reasoning, cacheRead int64) {
+func usageTokens(entry, native, message map[string]any) (input, output, reasoning, cacheRead, cacheWrite int64) {
 	usage, _ := firstMap(native["usage"], message["usage"], entry["usage"])
 	if usage == nil {
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, 0
 	}
 	return numberValue(usage, "input", "input_tokens", "prompt_tokens"),
 		numberValue(usage, "output", "output_tokens", "completion_tokens"),
 		numberValue(usage, "reasoning", "reasoning_tokens"),
-		numberValue(usage, "cacheRead", "cache_read", "cacheReadTokens")
+		numberValue(usage, "cacheRead", "cache_read", "cacheReadTokens"),
+		numberValue(usage, "cacheWrite", "cache_write", "cacheWriteTokens")
+}
+
+// usageCost reads pi's usage.cost block (dollar amounts, one field per
+// token category). Not every harness/model reports cost, so a missing
+// block just means all-zero, same as missing token counts.
+func usageCost(entry, native, message map[string]any) (input, output, cacheRead, cacheWrite, total float64) {
+	usage, _ := firstMap(native["usage"], message["usage"], entry["usage"])
+	if usage == nil {
+		return 0, 0, 0, 0, 0
+	}
+	cost, _ := usage["cost"].(map[string]any)
+	if cost == nil {
+		return 0, 0, 0, 0, 0
+	}
+	return floatValue(cost, "input"), floatValue(cost, "output"),
+		floatValue(cost, "cacheRead", "cache_read"), floatValue(cost, "cacheWrite", "cache_write"),
+		floatValue(cost, "total")
 }
 
 func toolError(entry, native map[string]any) string {

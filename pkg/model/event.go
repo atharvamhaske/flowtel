@@ -57,6 +57,12 @@ type Event struct {
 	OutputTokens       int64
 	ReasoningTokens    int64
 	CacheReadTokens    int64
+	CacheWriteTokens   int64
+	CostInput          float64
+	CostOutput         float64
+	CostCacheRead      float64
+	CostCacheWrite     float64
+	CostTotal          float64
 }
 
 func (e Event) Validate() error {
