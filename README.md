@@ -9,10 +9,10 @@ flowchart TB
   pi([Pi harness<br/>session JSONL / live events])
 
   subgraph flowtel["FLOWTEL"]
-    batch["Batch: Pi JSONL file"]
-    live["Live: Pi -> Unix socket -> daemon journal"]
+    batch["Batch: flowtel ingest"]
+    live["Live: flowtel pi run -> daemon journal"]
     ir["Event IR<br/>model.Event"]
-    render["profile.Renderer<br/>spans + audit.Record"]
+    render["profile.Renderer<br/>spans + audit.Record + metrics"]
   end
 
   pipeline["OTEL DELIVERY<br/>otlp.Pipeline"]
@@ -23,7 +23,7 @@ flowchart TB
     braintrust["Braintrust"]
     laminar["Laminar"]
   end
-  subgraph logs["Log backends"]
+  subgraph logsmetrics["Log + metrics backends"]
     greptime["Greptime"]
     parseable["Parseable"]
   end
@@ -35,19 +35,40 @@ flowchart TB
   ir --> render
   render --> pipeline
   pipeline --> boundary
-  boundary --> phoenix
-  boundary --> braintrust
-  boundary --> laminar
-  boundary --> greptime
-  boundary --> parseable
+  boundary -- traces --> phoenix
+  boundary -- traces --> braintrust
+  boundary -- traces --> laminar
+  boundary -- "logs + metrics" --> greptime
+  boundary -- "logs + metrics" --> parseable
 ```
 
 No SDK dependency · no proprietary attributes · no raw payloads by default.
 Flow order: `session -> llm -> tool -> permission`.
 
-The implementation follows [SPEC.md](SPEC.md). The current slice contains the
-event model, profile renderer, audit record, and official OpenTelemetry span
-recorder. Pi JSONL parsing, CLI wiring, and compatibility fixtures are next.
+## Backend signal support
+
+Not every backend accepts every OTLP signal. Confirmed by checking each
+platform's own OTLP ingestion docs directly (not assumed):
+
+| Backend | Traces | Logs | Metrics |
+|---|---|---|---|
+| Phoenix | Yes | - | Dashboard is trace-derived, not OTLP metrics ingestion |
+| Braintrust | Yes | via log-to-span conversion | No |
+| Laminar | Yes | - | No — "tracing today" per their own docs |
+| Greptime | Yes | Yes | Yes |
+| Parseable | Yes | Yes | Yes |
+
+`flowtel` exports all three signals (traces, logs, metrics) whenever the
+harness data supports it; `configs/collector/flowtel.yaml` only routes each
+signal to backends that actually accept it. Metrics export can be disabled
+entirely with `FLOWTEL_METRICS=0` (default on) — useful if you're only
+wired to a traces-only backend and don't want a periodic export error in
+the Collector's logs.
+
+The implementation follows [SPEC.md](SPEC.md). The daemon (`internal/daemon`),
+Pi adapter, profile renderer, audit record, and OTel span/log/metric export
+are all implemented. CLI: `flowtel ingest` (batch), `flowtel daemon serve` +
+`flowtel pi run` (live), `flowtel status` (live TUI).
 
 Runtime structs are in `internal/config` and focused reusable bounds are in
 `internal/bounds`. Values come from environment variables such as
@@ -55,13 +76,16 @@ Runtime structs are in `internal/config` and focused reusable bounds are in
 Collector destinations stay in `configs/collector/flowtel.yaml` and are
 provided through environment references.
 
-Run the checks with:
+Run the full CI-equivalent check locally with:
 
 ```sh
-go test ./...
-go test -race ./...
-go vet ./...
+make ci
 ```
+
+That runs `go mod tidy` drift check, the race-detected test suite,
+`go vet`, `golangci-lint`, and the end-to-end smoke script
+(`scripts/smoke-e2e.sh`) in order — see `Makefile` for the individual
+targets (`test`, `vet`, `lint`, `smoke`, `collector`).
 
 Create a release by pushing a tag such as `v0.1.0`. GitHub Actions runs
 GoReleaser from `.goreleaser.yaml` and publishes the cross-platform archives.
