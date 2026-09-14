@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -45,14 +46,35 @@ type Pipeline struct {
 }
 
 func New(ctx context.Context, endpoint string) (*Pipeline, error) {
+	return NewWithClient(ctx, endpoint, nil, nil)
+}
+
+// NewWithClient is like New but lets a caller inject a custom *http.Client
+// and extra per-request headers on the trace and log exporters. It exists
+// for internal/otlp/compat_test.go, which routes through a VCR recorder
+// (github.com/dnaeon/go-vcr) and carries a real backend's own auth headers
+// when bypassing the Collector entirely — see docs/adr/0004 for why the
+// compatibility tests talk to a real backend directly rather than through
+// the Collector.
+func NewWithClient(ctx context.Context, endpoint string, client *http.Client, headers map[string]string) (*Pipeline, error) {
 	if strings.TrimSpace(endpoint) == "" {
 		return nil, fmt.Errorf("create otlp pipeline: endpoint is empty")
 	}
-	traceExporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpointURL(endpoint, "/v1/traces")))
+	traceOpts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(endpointURL(endpoint, "/v1/traces"))}
+	logOpts := []otlploghttp.Option{otlploghttp.WithEndpointURL(endpointURL(endpoint, "/v1/logs"))}
+	if client != nil {
+		traceOpts = append(traceOpts, otlptracehttp.WithHTTPClient(client))
+		logOpts = append(logOpts, otlploghttp.WithHTTPClient(client))
+	}
+	if len(headers) > 0 {
+		traceOpts = append(traceOpts, otlptracehttp.WithHeaders(headers))
+		logOpts = append(logOpts, otlploghttp.WithHeaders(headers))
+	}
+	traceExporter, err := otlptracehttp.New(ctx, traceOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("create trace exporter: %w", err)
 	}
-	logExporter, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(endpointURL(endpoint, "/v1/logs")))
+	logExporter, err := otlploghttp.New(ctx, logOpts...)
 	if err != nil {
 		_ = traceExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("create log exporter: %w", err)
