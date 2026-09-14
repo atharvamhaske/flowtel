@@ -56,7 +56,14 @@ func main() {
 		}
 		return
 	}
-	fmt.Fprintln(os.Stderr, "usage: flowtel [--debug] version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH] | flowtel pi run [--socket PATH] [pi args...]")
+	if len(args) >= 1 && args[0] == "doctor" {
+		if err := runDoctor(args[1:]); err != nil {
+			slog.Error(err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+	fmt.Fprintln(os.Stderr, "usage: flowtel [--debug] version | flowtel ingest --input PATH [--best-effort] | flowtel daemon serve | flowtel status [--socket PATH] | flowtel pi run [--socket PATH] [pi args...] | flowtel doctor [--socket PATH]")
 	os.Exit(2)
 }
 
