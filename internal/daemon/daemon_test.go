@@ -65,6 +65,80 @@ func TestServeSocketIsOwnerOnly(t *testing.T) {
 	}
 }
 
+// TestEventLogCapturesRealProcessAncestry is the only test in this file
+// that uses a real Unix socket dial from a separate connection (like
+// TestServeSocketIsOwnerOnly) rather than net.Pipe — SO_PEERCRED/
+// LOCAL_PEERPID only apply to genuine AF_UNIX sockets, so every net.Pipe
+// -based test in this file exercises captureAncestry's no-op path, never
+// its happy path. This is the one place that proves the real capture
+// actually works.
+func TestEventLogCapturesRealProcessAncestry(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	socketPath := filepath.Join("/tmp", fmt.Sprintf("flowtel-ancestry-test-%d.sock", os.Getpid()))
+	t.Cleanup(func() { _ = os.Remove(socketPath) })
+	recorded := &recordSink{}
+	config := daemon.Config{SocketPath: socketPath, DataDir: filepath.Join(root, "data"), DaemonVersion: "test", Sources: []string{"debug"}, MaxLineBytes: 4096, QueueSize: 8}
+	server, err := daemon.New(config, recorded)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = server.Serve(ctx) }()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(socketPath); err == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	connection, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial daemon socket: %v", err)
+	}
+	defer func() { _ = connection.Close() }()
+	scanner := bufio.NewScanner(connection)
+	send := func(request map[string]any) {
+		t.Helper()
+		encoded, err := json.Marshal(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := connection.Write(append(encoded, '\n')); err != nil {
+			t.Fatal(err)
+		}
+		if !scanner.Scan() {
+			t.Fatalf("response missing: %v", scanner.Err())
+		}
+	}
+	send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{"protocol_version": 1, "client": map[string]any{"source": "debug"}}})
+	send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "event.log", "params": map[string]any{"source": "debug", "session_id": "s1", "event": "tool", "payload": map[string]any{"ok": true}}})
+
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && recorded.len() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	_ = server.Close()
+
+	recorded.mu.Lock()
+	defer recorded.mu.Unlock()
+	if len(recorded.envelopes) != 1 {
+		t.Fatalf("recorded = %d, want 1", len(recorded.envelopes))
+	}
+	ancestry := recorded.envelopes[0].ProcessAncestry
+	if len(ancestry) == 0 {
+		t.Fatal("process ancestry is empty, want at least the dialing test process itself")
+	}
+	if len(ancestry) > 64 {
+		t.Fatalf("ancestry depth = %d, want <= 64", len(ancestry))
+	}
+	if got := ancestry[0].PID; got != int32(os.Getpid()) {
+		t.Fatalf("ancestry[0].PID = %d, want %d (this test process)", got, os.Getpid())
+	}
+}
+
 func TestDaemonWireProtocol(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

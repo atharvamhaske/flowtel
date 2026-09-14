@@ -46,6 +46,9 @@ type Envelope struct {
 	Route         json.RawMessage `json:"route,omitempty"`
 	Config        json.RawMessage `json:"config,omitempty"`
 	Capture       json.RawMessage `json:"capture,omitempty"`
+	// ProcessAncestry is stamped by the daemon itself after decoding, never
+	// trusted from the client — see dispatch's "event.log" case.
+	ProcessAncestry []ProcessIdentity `json:"process_ancestry,omitempty"`
 }
 
 func (e Envelope) Validate() error {

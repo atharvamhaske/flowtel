@@ -180,7 +180,11 @@ func (d *Daemon) ServeConn(ctx context.Context, connection net.Conn) {
 		delete(d.connections, connection)
 		d.connMu.Unlock()
 	}()
-	d.handleConnection(ctx, connection)
+	// Captured once per connection, before any frames are read: by the
+	// time of the first event.log the connecting process's own parent
+	// may already have exited and reparented, so this must happen at
+	// accept time to reflect the real ancestry, not a later guess at it.
+	d.handleConnection(ctx, connection, captureAncestry(connection))
 }
 
 func (d *Daemon) Close() error {
@@ -213,7 +217,7 @@ func (d *Daemon) close() {
 	_ = os.Remove(d.config.SocketPath)
 }
 
-func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
+func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn, ancestry []ProcessIdentity) {
 	defer func() { _ = connection.Close() }()
 	scanner := bufio.NewScanner(connection)
 	scanner.Buffer(make([]byte, 4096), d.config.MaxLineBytes)
@@ -228,7 +232,7 @@ func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 			_ = writeResponse(connection, Response{JSONRPC: "2.0", ID: request.ID, Error: rpcError(invalidRequest, "initialize is required")})
 			continue
 		}
-		response, respond := d.dispatch(ctx, request)
+		response, respond := d.dispatch(ctx, request, ancestry)
 		if request.Method == "initialize" && response.Error == nil {
 			initialized = true
 		}
@@ -244,7 +248,7 @@ func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 	}
 }
 
-func (d *Daemon) dispatch(ctx context.Context, request Request) (Response, bool) {
+func (d *Daemon) dispatch(ctx context.Context, request Request, ancestry []ProcessIdentity) (Response, bool) {
 	response := Response{JSONRPC: "2.0", ID: request.ID}
 	switch request.Method {
 	case "initialize":
@@ -267,6 +271,10 @@ func (d *Daemon) dispatch(ctx context.Context, request Request) (Response, bool)
 			response.Error = rpcError(invalidParams, err.Error())
 			return response, true
 		}
+		// Server-assigned, always — a client-supplied value here would be
+		// a forged audit trail, so this overwrites unconditionally,
+		// including with nil when ancestry could not be captured.
+		envelope.ProcessAncestry = ancestry
 		if err := d.append(ctx, envelope); err != nil {
 			response.Error = rpcError(internalError, err.Error())
 			return response, true
