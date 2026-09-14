@@ -34,6 +34,32 @@ func TestRendererRender(t *testing.T) {
 	}
 }
 
+func TestRendererOpenInferenceOnlyHasSessionAndTokens(t *testing.T) {
+	event := model.Event{
+		ID: "llm-1", SessionID: "session-1", Harness: "pi",
+		Profile: model.ProfileOpenInference, Kind: model.KindLLM, Name: "llm",
+		Model: "model-1", Provider: "provider-1",
+		InputTokens: 12, OutputTokens: 8, ReasoningTokens: 3, CacheReadTokens: 2,
+	}
+	attributes, err := profile.New().Render(event)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	checks := map[string]any{
+		"session.id":                                   "session-1",
+		"llm.token_count.prompt":                       int64(12),
+		"llm.token_count.completion":                   int64(8),
+		"llm.token_count.total":                        int64(20),
+		"llm.token_count.completion_details.reasoning": int64(3),
+		"llm.token_count.prompt_details.cache_read":    int64(2),
+	}
+	for key, expected := range checks {
+		if got := attributes[key]; got != expected {
+			t.Errorf("attribute %q = %v, want %v", key, got, expected)
+		}
+	}
+}
+
 func TestRendererHonorsProfile(t *testing.T) {
 	event := model.Event{
 		ID: "llm-1", Harness: "pi", Profile: model.ProfileOpenInference,

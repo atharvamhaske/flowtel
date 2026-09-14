@@ -27,6 +27,11 @@ func (Renderer) Render(event model.Event) (map[string]any, error) {
 	}
 	if event.Profile == model.ProfileOpenInference || event.Profile == model.ProfileBoth {
 		attributes["openinference.span.kind"] = openInferenceKind(event.Kind)
+		if event.SessionID != "" {
+			// OpenInference's own session.id (not flowtel.session.id) is
+			// what Phoenix's session-grouping UI reads.
+			attributes["session.id"] = event.SessionID
+		}
 		if event.Model != "" {
 			attributes["llm.model_name"] = event.Model
 		}
@@ -35,6 +40,21 @@ func (Renderer) Render(event model.Event) (map[string]any, error) {
 		}
 		if event.ToolName != "" {
 			attributes["tool.name"] = event.ToolName
+		}
+		if event.InputTokens != 0 {
+			attributes["llm.token_count.prompt"] = event.InputTokens
+		}
+		if event.OutputTokens != 0 {
+			attributes["llm.token_count.completion"] = event.OutputTokens
+		}
+		if event.InputTokens != 0 || event.OutputTokens != 0 {
+			attributes["llm.token_count.total"] = event.InputTokens + event.OutputTokens
+		}
+		if event.ReasoningTokens != 0 {
+			attributes["llm.token_count.completion_details.reasoning"] = event.ReasoningTokens
+		}
+		if event.CacheReadTokens != 0 {
+			attributes["llm.token_count.prompt_details.cache_read"] = event.CacheReadTokens
 		}
 	}
 	if event.Profile == model.ProfileGenAI || event.Profile == model.ProfileBoth {
