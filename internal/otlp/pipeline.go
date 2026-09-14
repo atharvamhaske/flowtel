@@ -75,7 +75,11 @@ func (p *Pipeline) Record(ctx context.Context, events []model.Event, records []a
 			return fmt.Errorf("record event %q: %w", event.ID, err)
 		}
 		p.contexts[event.ID] = oteltrace.ContextWithSpan(context.Background(), span)
-		span.End()
+		if event.End.IsZero() {
+			span.End()
+		} else {
+			span.End(oteltrace.WithTimestamp(event.End))
+		}
 	}
 	for _, record := range records {
 		var otelRecord otellog.Record
