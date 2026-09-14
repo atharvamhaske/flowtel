@@ -34,11 +34,16 @@ func TestServeSocketIsOwnerOnly(t *testing.T) {
 	defer cancel()
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(ctx) }()
+	// Serve() creates the socket file (net.Listen, default/umask perms)
+	// and only then chmods it to 0600 — an accepted sub-millisecond gap
+	// (see daemon.go's enqueue ponytail note). Poll until the permissions
+	// are actually correct, not just until the file exists, or this test
+	// flakes by observing that same accepted window under load.
 	deadline := time.Now().Add(time.Second)
 	var info os.FileInfo
 	for time.Now().Before(deadline) {
 		info, err = os.Stat(socketPath)
-		if err == nil {
+		if err == nil && info.Mode().Perm() == 0o600 {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
