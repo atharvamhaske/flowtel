@@ -37,6 +37,14 @@ func (r Recorder) Start(ctx context.Context, event model.Event) (context.Context
 	span.SetAttributes(toAttributes(attributes)...)
 	if event.Error != "" {
 		span.SetStatus(codes.Error, event.Error)
+		// A status string alone doesn't give backends (Phoenix, Braintrust)
+		// the structured exception.* shape their error views expect — an
+		// explicit "exception" event is the standard OTel/OpenInference
+		// convention for that, so it's added alongside the status.
+		span.AddEvent("exception", trace.WithAttributes(
+			attribute.String("exception.type", string(event.Kind)+"_error"),
+			attribute.String("exception.message", event.Error),
+		))
 	}
 	return spanContext, span, nil
 }

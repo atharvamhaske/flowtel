@@ -177,6 +177,9 @@ func (p Parser) eventsFromEntry(entry map[string]any, state *parseState, lineNum
 		event.Model = firstString(event.Model, stringValue(message, "model"))
 		event.Provider = firstString(event.Provider, stringValue(message, "provider"))
 		event.InputTokens, event.OutputTokens, event.ReasoningTokens, event.CacheReadTokens = usageTokens(entry, native, message)
+		if stringValue(message, "stopReason") == "error" {
+			event.Error = firstString(stringValue(message, "errorMessage"), "llm call failed")
+		}
 		state.lastLLM = event.ID
 		if event.ParentID == "" {
 			event.ParentID = firstString(state.turnID, state.agentID, state.sessionID)

@@ -27,6 +27,27 @@ func TestParserParse(t *testing.T) {
 	}
 }
 
+func TestParserCapturesLLMError(t *testing.T) {
+	// Real shape observed from an actual pi session where a provider
+	// call failed (github-copilot returning 421 Misdirected Request).
+	input := strings.NewReader(`{"type":"session","id":"s1","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"message","id":"m1","parentId":"s1","sessionId":"s1","model":"model-1","provider":"provider-1","message":{"role":"assistant","usage":{"input":2},"stopReason":"error","errorMessage":"421 Misdirected Request"}}
+`)
+	result, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(result.Events))
+	}
+	if result.Events[1].Kind != model.KindLLM {
+		t.Fatalf("events[1].Kind = %v, want KindLLM", result.Events[1].Kind)
+	}
+	if result.Events[1].Error != "421 Misdirected Request" {
+		t.Fatalf("events[1].Error = %q, want %q", result.Events[1].Error, "421 Misdirected Request")
+	}
+}
+
 func TestParserRejectsMalformedInput(t *testing.T) {
 	_, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), strings.NewReader("{\n"))
 	if !errors.Is(err, pi.ErrMalformed) {
