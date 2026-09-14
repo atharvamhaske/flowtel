@@ -86,15 +86,19 @@ func TestEventLogCapturesRealProcessAncestry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = server.Serve(ctx) }()
+	// The socket file existing doesn't guarantee the dial will succeed
+	// under heavy parallel test load (transient "connection refused"
+	// observed under -shuffle with many concurrent daemon tests) — retry
+	// the dial itself, not just the file-existence check.
 	deadline := time.Now().Add(time.Second)
+	var connection net.Conn
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(socketPath); err == nil {
+		connection, err = net.Dial("unix", socketPath)
+		if err == nil {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-
-	connection, err := net.Dial("unix", socketPath)
 	if err != nil {
 		t.Fatalf("dial daemon socket: %v", err)
 	}
