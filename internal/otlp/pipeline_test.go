@@ -58,6 +58,98 @@ func TestPipelineExportsTracesAndLogs(t *testing.T) {
 	}
 }
 
+func TestPipelineExportsMetricsForLLMEvents(t *testing.T) {
+	var mutex sync.Mutex
+	paths := make([]string, 0, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mutex.Lock()
+		paths = append(paths, r.URL.Path)
+		mutex.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	pipeline, err := otlp.New(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	start := time.Now().Add(-2 * time.Second)
+	event := model.Event{
+		ID: "llm-1", SessionID: "s1", Harness: "pi", Profile: model.ProfileBoth,
+		Kind: model.KindLLM, Name: "flowtel.llm", Model: "claude", Provider: "anthropic",
+		Start: start, End: start.Add(2 * time.Second), InputTokens: 12, OutputTokens: 8,
+	}
+	record, err := audit.New(event)
+	if err != nil {
+		t.Fatalf("audit.New() error = %v", err)
+	}
+	if err := pipeline.Record(context.Background(), []model.Event{event}, []audit.Record{record}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+	// PeriodicReader defaults to a 60s export interval; ForceFlush forces
+	// an immediate collect+export so the test doesn't wait a minute.
+	if err := pipeline.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("ForceFlush() error = %v", err)
+	}
+	if err := pipeline.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	mutex.Lock()
+	defer mutex.Unlock()
+	seen := map[string]bool{}
+	for _, path := range paths {
+		seen[path] = true
+	}
+	if !seen["/v1/metrics"] {
+		t.Fatalf("export paths = %v, want /v1/metrics", paths)
+	}
+}
+
+func TestPipelineSkipsMetricsWhenDisabled(t *testing.T) {
+	t.Setenv(otlp.EnvMetricsEnabled, "0")
+	var mutex sync.Mutex
+	paths := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mutex.Lock()
+		paths = append(paths, r.URL.Path)
+		mutex.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	pipeline, err := otlp.New(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	event := model.Event{
+		ID: "llm-1", SessionID: "s1", Harness: "pi", Profile: model.ProfileBoth,
+		Kind: model.KindLLM, Name: "flowtel.llm", Model: "claude", Provider: "anthropic",
+		Start: time.Now().Add(-time.Second), End: time.Now(), InputTokens: 12,
+	}
+	record, err := audit.New(event)
+	if err != nil {
+		t.Fatalf("audit.New() error = %v", err)
+	}
+	if err := pipeline.Record(context.Background(), []model.Event{event}, []audit.Record{record}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+	if err := pipeline.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("ForceFlush() error = %v", err)
+	}
+	if err := pipeline.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	mutex.Lock()
+	defer mutex.Unlock()
+	for _, path := range paths {
+		if path == "/v1/metrics" {
+			t.Fatalf("export paths = %v, want no /v1/metrics when %s=0", paths, otlp.EnvMetricsEnabled)
+		}
+	}
+}
+
 func TestPipelineRecordsActualEventEndTimestamp(t *testing.T) {
 	var mutex sync.Mutex
 	var traceBody []byte

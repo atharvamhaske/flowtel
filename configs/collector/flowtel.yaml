@@ -51,3 +51,10 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, transform/flowtel, batch]
       exporters: [otlphttp/greptime, otlphttp/parseable]
+    metrics:
+      # Greptime and Parseable both ingest OTLP metrics; Phoenix,
+      # Braintrust, and Laminar don't as of writing, so they're
+      # deliberately not exporters here.
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/greptime, otlphttp/parseable]

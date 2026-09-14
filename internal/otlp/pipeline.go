@@ -6,13 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otellog "go.opentelemetry.io/otel/log"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
@@ -21,13 +26,22 @@ import (
 	"github.com/atharvamhaske/flowtel/pkg/model"
 )
 
+// EnvMetricsEnabled toggles OTLP metrics export. Default on; set to "0" to
+// skip it entirely. Not every configured backend accepts OTLP metrics
+// (e.g. Braintrust, Laminar don't as of writing) — without this, a user
+// wired only to those gets a periodic export error every ~60s forever.
+const EnvMetricsEnabled = "FLOWTEL_METRICS"
+
 type Pipeline struct {
-	traces   *trace.TracerProvider
-	logs     *log.LoggerProvider
-	record   flowtrace.Recorder
-	logger   otellog.Logger
-	mu       sync.Mutex
-	contexts map[string]context.Context
+	traces            *trace.TracerProvider
+	logs              *log.LoggerProvider
+	metrics           *metric.MeterProvider // nil when metrics export is disabled
+	tokenUsage        otelmetric.Int64Histogram
+	operationDuration otelmetric.Float64Histogram
+	record            flowtrace.Recorder
+	logger            otellog.Logger
+	mu                sync.Mutex
+	contexts          map[string]context.Context
 }
 
 func New(ctx context.Context, endpoint string) (*Pipeline, error) {
@@ -45,13 +59,53 @@ func New(ctx context.Context, endpoint string) (*Pipeline, error) {
 	}
 	traces := trace.NewTracerProvider(trace.WithBatcher(traceExporter))
 	logs := log.NewLoggerProvider(log.WithProcessor(log.NewBatchProcessor(logExporter)))
-	return &Pipeline{
+	pipeline := &Pipeline{
 		traces:   traces,
 		logs:     logs,
 		record:   flowtrace.New(traces.Tracer("github.com/atharvamhaske/flowtel")),
 		logger:   logs.Logger("github.com/atharvamhaske/flowtel"),
 		contexts: make(map[string]context.Context),
-	}, nil
+	}
+	if metricsEnabled() {
+		if err := pipeline.initMetrics(ctx, endpoint); err != nil {
+			_ = traceExporter.Shutdown(ctx)
+			_ = logExporter.Shutdown(ctx)
+			return nil, err
+		}
+	}
+	return pipeline, nil
+}
+
+func metricsEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvMetricsEnabled))) {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+func (p *Pipeline) initMetrics(ctx context.Context, endpoint string) error {
+	metricExporter, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(endpointURL(endpoint, "/v1/metrics")))
+	if err != nil {
+		return fmt.Errorf("create metric exporter: %w", err)
+	}
+	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(metricExporter)))
+	meter := meterProvider.Meter("github.com/atharvamhaske/flowtel")
+	tokenUsage, err := meter.Int64Histogram("gen_ai.client.token.usage", otelmetric.WithUnit("{token}"))
+	if err != nil {
+		_ = meterProvider.Shutdown(ctx)
+		return fmt.Errorf("create token usage histogram: %w", err)
+	}
+	operationDuration, err := meter.Float64Histogram("gen_ai.client.operation.duration", otelmetric.WithUnit("s"))
+	if err != nil {
+		_ = meterProvider.Shutdown(ctx)
+		return fmt.Errorf("create operation duration histogram: %w", err)
+	}
+	p.metrics = meterProvider
+	p.tokenUsage = tokenUsage
+	p.operationDuration = operationDuration
+	return nil
 }
 
 func (p *Pipeline) Record(ctx context.Context, events []model.Event, records []audit.Record) error {
@@ -80,6 +134,7 @@ func (p *Pipeline) Record(ctx context.Context, events []model.Event, records []a
 		} else {
 			span.End(oteltrace.WithTimestamp(event.End))
 		}
+		p.recordMetrics(ctx, event)
 	}
 	for _, record := range records {
 		var otelRecord otellog.Record
@@ -100,11 +155,41 @@ func (p *Pipeline) Record(ctx context.Context, events []model.Event, records []a
 	return nil
 }
 
+// recordMetrics records the two standard GenAI semconv histograms for a
+// completed LLM call. No-op when metrics export is disabled (p.tokenUsage
+// is nil) or the event isn't a fully-timed LLM span. Attributes are
+// deliberately limited to low-cardinality dimensions (model, provider,
+// harness, token type) — never session.id or event.ID, which would be a
+// per-session timeseries explosion in a metrics backend.
+func (p *Pipeline) recordMetrics(ctx context.Context, event model.Event) {
+	if p.tokenUsage == nil || p.operationDuration == nil {
+		return
+	}
+	if event.Kind != model.KindLLM || event.Start.IsZero() || event.End.IsZero() {
+		return
+	}
+	baseAttrs := []attribute.KeyValue{
+		attribute.String("gen_ai.request.model", event.Model),
+		attribute.String("gen_ai.system", event.Provider),
+		attribute.String("flowtel.harness", event.Harness),
+	}
+	p.operationDuration.Record(ctx, event.End.Sub(event.Start).Seconds(), otelmetric.WithAttributes(baseAttrs...))
+	if event.InputTokens != 0 {
+		p.tokenUsage.Record(ctx, event.InputTokens, otelmetric.WithAttributes(append(baseAttrs, attribute.String("gen_ai.token.type", "input"))...))
+	}
+	if event.OutputTokens != 0 {
+		p.tokenUsage.Record(ctx, event.OutputTokens, otelmetric.WithAttributes(append(baseAttrs, attribute.String("gen_ai.token.type", "output"))...))
+	}
+}
+
 func (p *Pipeline) ForceFlush(ctx context.Context) error {
 	if p == nil || p.traces == nil || p.logs == nil {
 		return fmt.Errorf("flush otlp pipeline: pipeline is nil")
 	}
-	return errors.Join(p.traces.ForceFlush(ctx), p.logs.ForceFlush(ctx))
+	if p.metrics == nil {
+		return errors.Join(p.traces.ForceFlush(ctx), p.logs.ForceFlush(ctx))
+	}
+	return errors.Join(p.traces.ForceFlush(ctx), p.logs.ForceFlush(ctx), p.metrics.ForceFlush(ctx))
 }
 
 func (p *Pipeline) Shutdown(ctx context.Context) error {
@@ -113,8 +198,12 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 	}
 	traceErr := p.traces.Shutdown(ctx)
 	logErr := p.logs.Shutdown(ctx)
-	if traceErr != nil || logErr != nil {
-		return fmt.Errorf("shutdown otlp pipeline: %w", errors.Join(traceErr, logErr))
+	var metricErr error
+	if p.metrics != nil {
+		metricErr = p.metrics.Shutdown(ctx)
+	}
+	if traceErr != nil || logErr != nil || metricErr != nil {
+		return fmt.Errorf("shutdown otlp pipeline: %w", errors.Join(traceErr, logErr, metricErr))
 	}
 	return nil
 }
