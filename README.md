@@ -74,6 +74,9 @@ are all implemented. CLI (binary `flowctl`): `flowctl ingest` (batch),
 Runtime structs are in `internal/config` and focused reusable bounds are in
 `internal/bounds`. Values come from environment variables such as
 `FLOWTEL_HARNESS`, `FLOWTEL_ATTRIBUTE_PROFILE`, and `FLOWTEL_OTLP_ENDPOINT`.
+`FLOWTEL_ENVIRONMENT` and `FLOWTEL_RELEASE` are optional and, when set, are
+stamped as `deployment.environment.name` and `service.version` on the OTel
+resource for every span, log record, and metric this pipeline exports.
 Collector destinations stay in `configs/collector/flowtel.yaml` and are
 provided through environment references.
 

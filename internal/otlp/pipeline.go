@@ -19,7 +19,9 @@ import (
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/atharvamhaske/flowtel/internal/audit"
@@ -32,6 +34,15 @@ import (
 // (e.g. Braintrust, Laminar don't as of writing) — without this, a user
 // wired only to those gets a periodic export error every ~60s forever.
 const EnvMetricsEnabled = "FLOWTEL_METRICS"
+
+// EnvEnvironment and EnvRelease stamp deployment.environment.name and
+// service.version onto every span, log record, and metric this pipeline
+// exports, so a backend can filter/group by deploy stage or build. Both are
+// optional — unset means the resource just carries service.name.
+const (
+	EnvEnvironment = "FLOWTEL_ENVIRONMENT"
+	EnvRelease     = "FLOWTEL_RELEASE"
+)
 
 type Pipeline struct {
 	traces            *trace.TracerProvider
@@ -79,8 +90,14 @@ func NewWithClient(ctx context.Context, endpoint string, client *http.Client, he
 		_ = traceExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("create log exporter: %w", err)
 	}
-	traces := trace.NewTracerProvider(trace.WithBatcher(traceExporter))
-	logs := log.NewLoggerProvider(log.WithProcessor(log.NewBatchProcessor(logExporter)))
+	res, err := buildResource()
+	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
+		_ = logExporter.Shutdown(ctx)
+		return nil, fmt.Errorf("build otel resource: %w", err)
+	}
+	traces := trace.NewTracerProvider(trace.WithBatcher(traceExporter), trace.WithResource(res))
+	logs := log.NewLoggerProvider(log.WithProcessor(log.NewBatchProcessor(logExporter)), log.WithResource(res))
 	pipeline := &Pipeline{
 		traces:   traces,
 		logs:     logs,
@@ -89,7 +106,7 @@ func NewWithClient(ctx context.Context, endpoint string, client *http.Client, he
 		contexts: make(map[string]context.Context),
 	}
 	if metricsEnabled() {
-		if err := pipeline.initMetrics(ctx, endpoint); err != nil {
+		if err := pipeline.initMetrics(ctx, endpoint, res); err != nil {
 			_ = traceExporter.Shutdown(ctx)
 			_ = logExporter.Shutdown(ctx)
 			return nil, err
@@ -107,12 +124,27 @@ func metricsEnabled() bool {
 	}
 }
 
-func (p *Pipeline) initMetrics(ctx context.Context, endpoint string) error {
+// buildResource merges the SDK's default resource (telemetry.sdk.*,
+// process/host detection) with flowtel's own service identity, so backends
+// can tell flowtel's spans apart from other instrumented services and,
+// optionally, filter by deploy environment or release.
+func buildResource() (*resource.Resource, error) {
+	attrs := []attribute.KeyValue{semconv.ServiceName("flowtel")}
+	if environment := strings.TrimSpace(os.Getenv(EnvEnvironment)); environment != "" {
+		attrs = append(attrs, semconv.DeploymentEnvironmentNameKey.String(environment))
+	}
+	if release := strings.TrimSpace(os.Getenv(EnvRelease)); release != "" {
+		attrs = append(attrs, semconv.ServiceVersion(release))
+	}
+	return resource.Merge(resource.Default(), resource.NewSchemaless(attrs...))
+}
+
+func (p *Pipeline) initMetrics(ctx context.Context, endpoint string, res *resource.Resource) error {
 	metricExporter, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(endpointURL(endpoint, "/v1/metrics")))
 	if err != nil {
 		return fmt.Errorf("create metric exporter: %w", err)
 	}
-	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(metricExporter)))
+	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(metricExporter)), metric.WithResource(res))
 	meter := meterProvider.Meter("github.com/atharvamhaske/flowtel")
 	tokenUsage, err := meter.Int64Histogram("gen_ai.client.token.usage", otelmetric.WithUnit("{token}"))
 	if err != nil {

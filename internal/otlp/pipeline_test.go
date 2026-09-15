@@ -209,3 +209,67 @@ func TestPipelineRecordsActualEventEndTimestamp(t *testing.T) {
 		t.Fatalf("span end = %v, want %v (event.End, not time.Now())", gotEnd, end)
 	}
 }
+
+func TestPipelineStampsEnvironmentAndReleaseOnResource(t *testing.T) {
+	t.Setenv(otlp.EnvEnvironment, "staging")
+	t.Setenv(otlp.EnvRelease, "1.2.3")
+
+	var mutex sync.Mutex
+	var traceBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/traces" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutex.Lock()
+			traceBody = body
+			mutex.Unlock()
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	pipeline, err := otlp.New(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	event := model.Event{
+		ID: "s1", SessionID: "s1", Harness: "pi", Profile: model.ProfileBoth,
+		Kind: model.KindSession, Name: "flowtel.session",
+	}
+	record, err := audit.New(event)
+	if err != nil {
+		t.Fatalf("audit.New() error = %v", err)
+	}
+	if err := pipeline.Record(context.Background(), []model.Event{event}, []audit.Record{record}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+	if err := pipeline.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	mutex.Lock()
+	body := traceBody
+	mutex.Unlock()
+	var request coltracepb.ExportTraceServiceRequest
+	if err := proto.Unmarshal(body, &request); err != nil {
+		t.Fatalf("unmarshal trace export request: %v", err)
+	}
+	if len(request.ResourceSpans) == 0 || request.ResourceSpans[0].Resource == nil {
+		t.Fatal("no resource in export request")
+	}
+	got := map[string]string{}
+	for _, attribute := range request.ResourceSpans[0].Resource.Attributes {
+		got[attribute.Key] = attribute.Value.GetStringValue()
+	}
+	if got["deployment.environment.name"] != "staging" {
+		t.Fatalf("deployment.environment.name = %q, want %q", got["deployment.environment.name"], "staging")
+	}
+	if got["service.version"] != "1.2.3" {
+		t.Fatalf("service.version = %q, want %q", got["service.version"], "1.2.3")
+	}
+	if got["service.name"] != "flowtel" {
+		t.Fatalf("service.name = %q, want %q", got["service.name"], "flowtel")
+	}
+}
