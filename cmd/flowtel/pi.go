@@ -26,7 +26,7 @@ func runPi(args []string) error {
 	flags := flag.NewFlagSet("pi run", flag.ContinueOnError)
 	socketPath := flags.String("socket", defaults.SocketPath, "local Unix socket path")
 	if len(args) == 0 || args[0] != "run" {
-		return fmt.Errorf("usage: flowtel pi run [--socket PATH] [pi args...]")
+		return fmt.Errorf("usage: flowctl pi run [--socket PATH] [pi args...]")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parse pi run flags: %w", err)
