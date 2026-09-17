@@ -273,3 +273,74 @@ func TestPipelineStampsEnvironmentAndReleaseOnResource(t *testing.T) {
 		t.Fatalf("service.name = %q, want %q", got["service.name"], "flowtel")
 	}
 }
+
+func TestPipelineStampsCustomTagsOnResource(t *testing.T) {
+	// A malformed pair (no "=") and a reserved-key collision are mixed in
+	// with valid pairs, to prove both are dropped rather than exported
+	// (the collision case guards against FLOWTEL_TAGS silently overriding
+	// the fixed FLOWTEL_ENVIRONMENT value below).
+	t.Setenv(otlp.EnvEnvironment, "staging")
+	t.Setenv(otlp.EnvTags, "team=platform, service.name=hijacked ,malformed-pair, region=us-east-1")
+
+	var mutex sync.Mutex
+	var traceBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/traces" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutex.Lock()
+			traceBody = body
+			mutex.Unlock()
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	pipeline, err := otlp.New(context.Background(), server.URL)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	event := model.Event{
+		ID: "s1", SessionID: "s1", Harness: "pi", Profile: model.ProfileBoth,
+		Kind: model.KindSession, Name: "flowtel.session",
+	}
+	record, err := audit.New(event)
+	if err != nil {
+		t.Fatalf("audit.New() error = %v", err)
+	}
+	if err := pipeline.Record(context.Background(), []model.Event{event}, []audit.Record{record}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+	if err := pipeline.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	mutex.Lock()
+	body := traceBody
+	mutex.Unlock()
+	var request coltracepb.ExportTraceServiceRequest
+	if err := proto.Unmarshal(body, &request); err != nil {
+		t.Fatalf("unmarshal trace export request: %v", err)
+	}
+	if len(request.ResourceSpans) == 0 || request.ResourceSpans[0].Resource == nil {
+		t.Fatal("no resource in export request")
+	}
+	got := map[string]string{}
+	for _, attribute := range request.ResourceSpans[0].Resource.Attributes {
+		got[attribute.Key] = attribute.Value.GetStringValue()
+	}
+	if got["team"] != "platform" {
+		t.Fatalf("team = %q, want %q", got["team"], "platform")
+	}
+	if got["region"] != "us-east-1" {
+		t.Fatalf("region = %q, want %q", got["region"], "us-east-1")
+	}
+	if got["service.name"] != "flowtel" {
+		t.Fatalf("service.name = %q, want %q (reserved-key collision must not override it)", got["service.name"], "flowtel")
+	}
+	if got["deployment.environment.name"] != "staging" {
+		t.Fatalf("deployment.environment.name = %q, want %q (malformed pair must not clobber it)", got["deployment.environment.name"], "staging")
+	}
+}

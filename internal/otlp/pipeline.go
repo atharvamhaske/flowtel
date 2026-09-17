@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,6 +44,20 @@ const (
 	EnvEnvironment = "FLOWTEL_ENVIRONMENT"
 	EnvRelease     = "FLOWTEL_RELEASE"
 )
+
+// EnvTags is an optional comma-separated key=value list (matching OTel's own
+// OTEL_RESOURCE_ATTRIBUTES convention) stamped onto the resource alongside
+// service.name/environment/release. A malformed pair, or a key that collides
+// with a reserved resource attribute this pipeline already controls, is
+// skipped with a warning rather than silently dropped or allowed to clobber
+// service identity.
+const EnvTags = "FLOWTEL_TAGS"
+
+var reservedResourceKeys = map[string]bool{
+	string(semconv.ServiceNameKey):               true,
+	string(semconv.ServiceVersionKey):            true,
+	string(semconv.DeploymentEnvironmentNameKey): true,
+}
 
 type Pipeline struct {
 	traces            *trace.TracerProvider
@@ -136,7 +151,34 @@ func buildResource() (*resource.Resource, error) {
 	if release := strings.TrimSpace(os.Getenv(EnvRelease)); release != "" {
 		attrs = append(attrs, semconv.ServiceVersion(release))
 	}
+	attrs = append(attrs, parseTags(os.Getenv(EnvTags))...)
 	return resource.Merge(resource.Default(), resource.NewSchemaless(attrs...))
+}
+
+// parseTags reads a comma-separated key=value list. A pair missing "=", with
+// an empty key, or whose key collides with a reserved resource attribute
+// (service.name, service.version, deployment.environment.name) is skipped
+// with a warning rather than silently dropped or allowed to override
+// identity set by EnvEnvironment/EnvRelease.
+func parseTags(raw string) []attribute.KeyValue {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var attrs []attribute.KeyValue
+	for pair := range strings.SplitSeq(raw, ",") {
+		key, value, found := strings.Cut(pair, "=")
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if !found || key == "" {
+			slog.Warn("skipping malformed FLOWTEL_TAGS pair", "pair", pair)
+			continue
+		}
+		if reservedResourceKeys[key] {
+			slog.Warn("skipping FLOWTEL_TAGS key that collides with a reserved resource attribute", "key", key)
+			continue
+		}
+		attrs = append(attrs, attribute.String(key, value))
+	}
+	return attrs
 }
 
 func (p *Pipeline) initMetrics(ctx context.Context, endpoint string, res *resource.Resource) error {

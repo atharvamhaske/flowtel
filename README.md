@@ -77,6 +77,11 @@ Runtime structs are in `internal/config` and focused reusable bounds are in
 `FLOWTEL_ENVIRONMENT` and `FLOWTEL_RELEASE` are optional and, when set, are
 stamped as `deployment.environment.name` and `service.version` on the OTel
 resource for every span, log record, and metric this pipeline exports.
+`FLOWTEL_TAGS` is an optional comma-separated `key=value` list (matching
+OTel's own `OTEL_RESOURCE_ATTRIBUTES` convention) stamped onto the same
+resource — a malformed pair or a key that collides with a reserved attribute
+is skipped with a warning rather than silently dropped or allowed to
+override service identity.
 Collector destinations stay in `configs/collector/flowtel.yaml` and are
 provided through environment references.
 
