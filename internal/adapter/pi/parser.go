@@ -9,6 +9,7 @@ import (
 	"io"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/atharvamhaske/flowtel/internal/audit"
 	"github.com/atharvamhaske/flowtel/pkg/model"
@@ -295,7 +296,7 @@ func thinkingChars(message map[string]any) int64 {
 		if !ok || stringValue(block, "type") != "thinking" {
 			continue
 		}
-		total += int64(len(stringValue(block, "thinking")))
+		total += int64(utf8.RuneCountInString(stringValue(block, "thinking")))
 	}
 	return total
 }

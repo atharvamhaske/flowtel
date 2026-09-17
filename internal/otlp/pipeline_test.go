@@ -343,4 +343,7 @@ func TestPipelineStampsCustomTagsOnResource(t *testing.T) {
 	if got["deployment.environment.name"] != "staging" {
 		t.Fatalf("deployment.environment.name = %q, want %q (malformed pair must not clobber it)", got["deployment.environment.name"], "staging")
 	}
+	if _, ok := got["malformed-pair"]; ok {
+		t.Fatalf("malformed-pair present in resource attributes, want it skipped (no \"=\")")
+	}
 }

@@ -73,6 +73,25 @@ func TestParserCapturesThinkingChars(t *testing.T) {
 	}
 }
 
+func TestParserCapturesThinkingCharsNotBytes(t *testing.T) {
+	// "日本語" is 3 runes but 9 UTF-8 bytes — pins that ThinkingChars counts
+	// runes, matching its name and the README's "character count" claim,
+	// not len()'s byte count.
+	input := strings.NewReader(`{"type":"session","id":"s1","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"message","id":"m1","parentId":"s1","sessionId":"s1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"日本語"},{"type":"toolCall","name":"read"}]}}
+`)
+	result, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(result.Events))
+	}
+	if got := result.Events[1].ThinkingChars; got != 3 {
+		t.Fatalf("ThinkingChars = %d, want 3 (rune count, not the 9-byte UTF-8 length)", got)
+	}
+}
+
 func TestParserCapturesLLMError(t *testing.T) {
 	// Real shape observed from an actual pi session where a provider
 	// call failed (github-copilot returning 421 Misdirected Request).
