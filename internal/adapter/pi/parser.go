@@ -159,6 +159,7 @@ func (p Parser) eventsFromEntry(entry map[string]any, state *parseState, lineNum
 	if parentID == "" {
 		parentID = state.defaultParent(kind)
 	}
+	message, _ := firstMap(entry["message"], native["message"])
 	event := model.Event{
 		ID: id, ParentID: parentID, SessionID: state.sessionID, Harness: "pi",
 		Profile: p.Profile, Kind: kind, Name: name,
@@ -168,6 +169,7 @@ func (p Parser) eventsFromEntry(entry map[string]any, state *parseState, lineNum
 		ToolName:           stringValue(entry, "toolName"),
 		PermissionDecision: stringValue(entry, "decision"),
 		PermissionSource:   stringValue(entry, "source"),
+		ThinkingChars:      thinkingChars(message),
 	}
 	if event.SessionID == "" {
 		event.SessionID = stringValue(native, "session_id")
@@ -276,6 +278,26 @@ func hasToolCall(message map[string]any) bool {
 		}
 	}
 	return false
+}
+
+// thinkingChars sums the character length of every "thinking" content block
+// on the message, so a step's reasoning presence/size is visible without
+// exporting the reasoning text itself — the text is a raw model payload,
+// and SPEC.md defaults to no raw payloads.
+func thinkingChars(message map[string]any) int64 {
+	content, ok := message["content"].([]any)
+	if !ok {
+		return 0
+	}
+	var total int64
+	for _, item := range content {
+		block, ok := item.(map[string]any)
+		if !ok || stringValue(block, "type") != "thinking" {
+			continue
+		}
+		total += int64(len(stringValue(block, "thinking")))
+	}
+	return total
 }
 
 func firstString(values ...string) string {

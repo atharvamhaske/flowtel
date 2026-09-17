@@ -50,6 +50,29 @@ func TestParserCapturesCacheWriteAndCost(t *testing.T) {
 	}
 }
 
+func TestParserCapturesThinkingChars(t *testing.T) {
+	// Real pi message shape: a thinking content block sits in the same
+	// content array as the toolCall it preceded, on one message/content-part
+	// event — see packages/ai/src/types.ts's ThinkingContent in
+	// github.com/badlogic/pi-mono. Only the character count should surface;
+	// the reasoning text itself must never be exported (raw model payload).
+	input := strings.NewReader(`{"type":"session","id":"s1","timestamp":"2026-01-01T00:00:00Z"}
+{"type":"message","id":"m1","parentId":"s1","sessionId":"s1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"checking the file first"},{"type":"toolCall","name":"read"}]}}
+`)
+	result, err := pi.NewParser(model.ProfileBoth, false).Parse(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(result.Events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(result.Events))
+	}
+	event := result.Events[1]
+	want := int64(len("checking the file first"))
+	if event.ThinkingChars != want {
+		t.Fatalf("ThinkingChars = %d, want %d", event.ThinkingChars, want)
+	}
+}
+
 func TestParserCapturesLLMError(t *testing.T) {
 	// Real shape observed from an actual pi session where a provider
 	// call failed (github-copilot returning 421 Misdirected Request).

@@ -25,6 +25,13 @@ func (Renderer) Render(event model.Event) (map[string]any, error) {
 	if event.SessionID != "" {
 		attributes["flowtel.session.id"] = event.SessionID
 	}
+	if event.ThinkingChars != 0 {
+		// Presence/length only, never the reasoning text itself — the text
+		// is a raw model payload, and SPEC.md defaults to no raw payloads.
+		// Neither OpenInference nor GenAI semconv has a standard attribute
+		// for this, so it's namespaced under flowtel.* like session.id above.
+		attributes["flowtel.thinking.chars"] = event.ThinkingChars
+	}
 	if event.Profile == model.ProfileOpenInference || event.Profile == model.ProfileBoth {
 		attributes["openinference.span.kind"] = openInferenceKind(event.Kind)
 		if event.SessionID != "" {

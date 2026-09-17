@@ -34,6 +34,31 @@ func TestRendererRender(t *testing.T) {
 	}
 }
 
+func TestRendererEmitsThinkingCharsButNeverZero(t *testing.T) {
+	present := model.Event{
+		ID: "tool-1", SessionID: "session-1", Harness: "pi",
+		Profile: model.ProfileBoth, Kind: model.KindTool, Name: "tool.read",
+		ToolName: "read", ThinkingChars: 24,
+	}
+	attributes, err := profile.New().Render(present)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if got := attributes["flowtel.thinking.chars"]; got != int64(24) {
+		t.Fatalf("flowtel.thinking.chars = %v, want 24", got)
+	}
+
+	absent := present
+	absent.ThinkingChars = 0
+	attributes, err = profile.New().Render(absent)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if _, ok := attributes["flowtel.thinking.chars"]; ok {
+		t.Fatalf("flowtel.thinking.chars present with ThinkingChars=0, want absent")
+	}
+}
+
 func TestRendererOpenInferenceOnlyHasSessionAndTokens(t *testing.T) {
 	event := model.Event{
 		ID: "llm-1", SessionID: "session-1", Harness: "pi",

@@ -71,6 +71,11 @@ are all implemented. CLI (binary `flowctl`): `flowctl ingest` (batch),
 `flowctl daemon serve` + `flowctl pi run` (live), `flowctl status` (live TUI),
 `flowctl doctor` (diagnostics).
 
+When a step's model response includes reasoning/thinking content, the span
+carries `flowtel.thinking.chars` — the character count only, never the
+reasoning text itself, since that's a raw model payload and `SPEC.md`
+defaults to no raw payloads.
+
 Runtime structs are in `internal/config` and focused reusable bounds are in
 `internal/bounds`. Values come from environment variables such as
 `FLOWTEL_HARNESS`, `FLOWTEL_ATTRIBUTE_PROFILE`, and `FLOWTEL_OTLP_ENDPOINT`.

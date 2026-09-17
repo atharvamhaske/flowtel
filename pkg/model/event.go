@@ -63,6 +63,7 @@ type Event struct {
 	CostCacheRead      float64
 	CostCacheWrite     float64
 	CostTotal          float64
+	ThinkingChars      int64
 }
 
 func (e Event) Validate() error {
