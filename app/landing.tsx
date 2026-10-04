@@ -91,7 +91,7 @@ const widths = { 800: "max-w-[800px]", 900: "max-w-[900px]" };
 export function Landing({ width }: { width: keyof typeof widths }) {
   return (
     <main className="min-h-dvh px-3 text-[16px] leading-[1.65] sm:px-8">
-      <div className={`mx-auto ${widths[width]} border-x border-line`}>
+      <div className={`mx-auto ${widths[width]} border-x border-dashed border-line`}>
         <header className="flex h-14 items-center justify-between gap-5 border-b border-[#ededed] px-5 sm:px-11">
           <Brand />
           <nav className="flex items-center gap-3 text-[13px] tracking-[-0.2px] sm:gap-6">
