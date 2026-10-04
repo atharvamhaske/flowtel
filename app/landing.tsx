@@ -91,7 +91,7 @@ const widths = { 800: "max-w-[800px]", 900: "max-w-[900px]" };
 export function Landing({ width }: { width: keyof typeof widths }) {
   return (
     <main className="min-h-dvh px-3 text-[16px] leading-[1.65] sm:px-8">
-      <div className={`mx-auto ${widths[width]} border-x border-line bg-paper`}>
+      <div className={`mx-auto ${widths[width]} border-x border-line`}>
         <header className="flex h-14 items-center justify-between gap-5 border-b border-[#ededed] px-5 sm:px-11">
           <Brand />
           <nav className="flex items-center gap-3 text-[13px] tracking-[-0.2px] sm:gap-6">
@@ -170,7 +170,7 @@ export function Landing({ width }: { width: keyof typeof widths }) {
         </section>
 
         {/* Run */}
-        <section id="run" className={`${section} grid items-center gap-6 bg-[#fcfcfc] sm:grid-cols-[1fr_1.15fr] sm:gap-11`}>
+        <section id="run" className={`${section} grid items-center gap-6 sm:grid-cols-[1fr_1.15fr] sm:gap-11`}>
           <div>
             <p className={kicker}>Your harness. Your collector.</p>
             <h2 className={h2}>Pi today. Small adapters, easy to add.</h2>
@@ -207,7 +207,7 @@ export function Landing({ width }: { width: keyof typeof widths }) {
           <div className="mt-8 overflow-x-auto rounded-lg border border-line">
             <table className="w-full min-w-[620px] border-collapse text-left text-[13px]">
               <thead>
-                <tr className="border-b border-line bg-[#fcfcfc]">
+                <tr className="border-b border-line">
                   <th className="px-4 py-3 text-[12px] font-normal text-faint">Capability</th>
                   {compareCols.map((col, i) => (
                     <th key={col} className={`px-4 py-3 font-medium ${i === 0 ? "text-accent" : "text-ink"}`}>

@@ -16,7 +16,7 @@ void main(){
   float q=fbm(p+vec2(t*.04,-t*.06));
   float v=fbm(p+2.2*vec2(q,fbm(p+3.1+t*.03)));
   float m=v*1.25-uv.y*1.1+.2;
-  vec3 paper=vec3(1.),soft=vec3(.973,.773,.667),accent=vec3(.918,.345,.047);
+  vec3 paper=vec3(.98),soft=vec3(.973,.773,.667),accent=vec3(.918,.345,.047);
   vec3 c=mix(paper,soft,smoothstep(.05,.45,m));
   c=mix(c,accent,smoothstep(.45,.95,m));
   c+=(h(gl_FragCoord.xy+fract(t))-.5)*.06;
