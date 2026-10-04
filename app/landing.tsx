@@ -135,7 +135,7 @@ export function Landing({ width }: { width: keyof typeof widths }) {
             From harness session to your backend.
           </p>
           <figure className="mt-5 animate-rise overflow-hidden rounded-xl border border-[#ededed] bg-paper p-2 [animation-delay:300ms] motion-reduce:animate-none sm:p-4">
-            <img src="/flowtel.svg" alt="Flowtel architecture: harness sessions exported as OTLP traces, metrics and logs" width={2000} height={1137} className="h-auto w-full" />
+            <img src="/flowtel.svg" draggable={false} alt="Flowtel architecture: harness sessions exported as OTLP traces, metrics and logs" width={2000} height={1137} className="h-auto w-full select-none" />
           </figure>
         </section>
 
