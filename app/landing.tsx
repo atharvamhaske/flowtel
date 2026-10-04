@@ -131,20 +131,10 @@ export function Landing({ width }: { width: keyof typeof widths }) {
               $ flowctl pi run
             </a>
           </div>
-          <div className="mt-6 flex animate-rise flex-wrap justify-center gap-x-5 gap-y-2 text-[12px] text-[#767676] [animation-delay:240ms] motion-reduce:animate-none">
-            <span>no SDK dependency</span>
-            <span>no proprietary attributes</span>
-            <span>no raw payloads by default</span>
-          </div>
-          <div className="mx-auto mt-16 max-w-[60ch] animate-rise [animation-delay:300ms] motion-reduce:animate-none">
-            <p className={`${kicker} mb-2`}>How it works</p>
-            <p className="mb-2 text-[19px] font-medium tracking-[-0.4px] text-ink">From harness session to your backend.</p>
-            <p className={`${body} text-[14px]`}>
-              Pi sessions arrive as JSONL or live events, become one event model, render as OTel spans and metrics, and leave through
-              a single OTLP pipeline to a collector that fans out to your trace, log and metric backends.
-            </p>
-          </div>
-          <figure className="mt-6 animate-rise overflow-hidden rounded-xl border border-[#ededed] bg-paper p-2 [animation-delay:360ms] motion-reduce:animate-none sm:p-4">
+          <p className="mt-16 animate-rise text-[19px] font-medium tracking-[-0.4px] text-ink [animation-delay:240ms] motion-reduce:animate-none">
+            From harness session to your backend.
+          </p>
+          <figure className="mt-5 animate-rise overflow-hidden rounded-xl border border-[#ededed] bg-paper p-2 [animation-delay:300ms] motion-reduce:animate-none sm:p-4">
             <img src="/flowtel.svg" alt="Flowtel architecture: harness sessions exported as OTLP traces, metrics and logs" width={2000} height={1137} className="h-auto w-full" />
           </figure>
         </section>
