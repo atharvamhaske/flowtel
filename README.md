@@ -4,43 +4,9 @@ Flowtel is a small, vendor-neutral Go library for tracing coding-harness work.
 Pi is the first adapter. The core emits OpenTelemetry spans and bounded audit
 logs with OpenInference and OTel GenAI attributes on the same spans.
 
-```mermaid
-flowchart TB
-  pi([Pi harness<br/>session JSONL / live events])
-
-  subgraph flowtel["FLOWTEL"]
-    batch["Batch: flowctl ingest"]
-    live["Live: flowctl pi run -> daemon journal"]
-    ir["Event IR<br/>model.Event"]
-    render["profile.Renderer<br/>spans + audit.Record + metrics"]
-  end
-
-  pipeline["OTEL DELIVERY<br/>otlp.Pipeline"]
-  boundary(["BOUNDARY<br/>Collector"])
-
-  subgraph traces["Trace backends"]
-    phoenix["Phoenix"]
-    braintrust["Braintrust"]
-    laminar["Laminar"]
-  end
-  subgraph logsmetrics["Log + metrics backends"]
-    greptime["Greptime"]
-    parseable["Parseable"]
-  end
-
-  pi --> batch
-  pi --> live
-  batch --> ir
-  live --> ir
-  ir --> render
-  render --> pipeline
-  pipeline --> boundary
-  boundary -- traces --> phoenix
-  boundary -- traces --> braintrust
-  boundary -- traces --> laminar
-  boundary -- "logs + metrics" --> greptime
-  boundary -- "logs + metrics" --> parseable
-```
+<p align="center">
+  <img src="public/flowtel.svg" alt="Flowtel architecture: Pi sessions flow through flowtel to a Collector, then to trace, log and metric backends" width="100%" />
+</p>
 
 No SDK dependency · no proprietary attributes · no raw payloads by default.
 Flow order: `session -> llm -> tool -> permission`.
@@ -54,53 +20,62 @@ platform's own OTLP ingestion docs directly (not assumed):
 |---|---|---|---|
 | Phoenix | Yes | - | Dashboard is trace-derived, not OTLP metrics ingestion |
 | Braintrust | Yes | via log-to-span conversion | No |
-| Laminar | Yes | - | No — "tracing today" per their own docs |
+| Laminar | Yes | - | No, "tracing today" per their own docs |
 | Greptime | Yes | Yes | Yes |
 | Parseable | Yes | Yes | Yes |
 
-`flowtel` exports all three signals (traces, logs, metrics) whenever the
-harness data supports it; `configs/collector/flowtel.yaml` only routes each
-signal to backends that actually accept it. Metrics export can be disabled
-entirely with `FLOWTEL_METRICS=0` (default on) — useful if you're only
-wired to a traces-only backend and don't want a periodic export error in
-the Collector's logs.
+Flowtel exports traces, logs and metrics when the harness data has them.
+`configs/collector/flowtel.yaml` sends each signal only to backends that
+accept it. Set `FLOWTEL_METRICS=0` to turn off metrics export, for example
+when you only use a traces backend and want no export errors in the
+Collector logs.
 
-The implementation follows [SPEC.md](SPEC.md). The daemon (`internal/daemon`),
-Pi adapter, profile renderer, audit record, and OTel span/log/metric export
-are all implemented. CLI (binary `flowctl`): `flowctl ingest` (batch),
-`flowctl daemon serve` + `flowctl pi run` (live), `flowctl status` (live TUI),
-`flowctl doctor` (diagnostics).
+## Status
 
-When a step's model response includes reasoning/thinking content, the span
-carries `flowtel.thinking.chars` — the character count only, never the
-reasoning text itself, since that's a raw model payload and `SPEC.md`
-defaults to no raw payloads.
+The code follows [SPEC.md](SPEC.md). The daemon, Pi adapter, profile
+renderer, audit record and OTel export all work. The `flowctl` CLI has
+these commands:
 
-Runtime structs are in `internal/config` and focused reusable bounds are in
-`internal/bounds`. Values come from environment variables such as
-`FLOWTEL_HARNESS`, `FLOWTEL_ATTRIBUTE_PROFILE`, and `FLOWTEL_OTLP_ENDPOINT`.
-`FLOWTEL_ENVIRONMENT` and `FLOWTEL_RELEASE` are optional and, when set, are
-stamped as `deployment.environment.name` and `service.version` on the OTel
-resource for every span, log record, and metric this pipeline exports.
-`FLOWTEL_TAGS` is an optional comma-separated `key=value` list (matching
-OTel's own `OTEL_RESOURCE_ATTRIBUTES` convention) stamped onto the same
-resource — a malformed pair or a key that collides with a reserved attribute
-is skipped with a warning rather than silently dropped or allowed to
-override service identity.
-Collector destinations stay in `configs/collector/flowtel.yaml` and are
-provided through environment references.
+- `flowctl ingest` reads finished sessions in batch.
+- `flowctl daemon serve` and `flowctl pi run` trace live sessions.
+- `flowctl status` shows a live TUI.
+- `flowctl doctor` runs diagnostics.
 
-Run the full CI-equivalent check locally with:
+If a model response has reasoning text, the span records only its length
+in `flowtel.thinking.chars`. Flowtel never exports the text itself, because
+it is a raw payload.
+
+## Configuration
+
+Flowtel reads its settings from environment variables. The Collector
+destinations live in `configs/collector/flowtel.yaml`.
+
+| Variable | Use |
+|---|---|
+| `FLOWTEL_HARNESS` | Harness adapter, for example `pi`. |
+| `FLOWTEL_ATTRIBUTE_PROFILE` | `openinference`, `gen_ai` or `both`. |
+| `FLOWTEL_OTLP_ENDPOINT` | OTLP endpoint to export to. |
+| `FLOWTEL_ENVIRONMENT` | Optional. Sets `deployment.environment.name`. |
+| `FLOWTEL_RELEASE` | Optional. Sets `service.version`. |
+| `FLOWTEL_TAGS` | Optional `key=value,key=value` resource attributes. |
+| `FLOWTEL_METRICS` | Set to `0` to turn off metrics. On by default. |
+
+Flowtel adds the environment, release and tags to every span, log and
+metric it exports. It skips a malformed tag or a tag that uses a reserved
+key and logs a warning.
+
+## Development
+
+Run the same checks as CI:
 
 ```sh
 make ci
 ```
 
-That runs `go mod tidy` drift check, the race-detected test suite,
-`go vet`, `golangci-lint`, and the end-to-end smoke script
-(`scripts/smoke-e2e.sh`) in order — see `Makefile` for the individual
-targets (`test`, `vet`, `lint`, `smoke`, `collector`).
+This runs the `go mod tidy` drift check, tests with the race detector,
+`go vet`, `golangci-lint` and `scripts/smoke-e2e.sh`. The `Makefile` has
+each step as its own target.
 
-Create a release by pushing a tag such as `v0.1.0`. GitHub Actions runs
-GoReleaser from `.goreleaser.yaml` and publishes the cross-platform archives.
-The CLI version, commit, and build date are injected by GoReleaser ldflags.
+To release, push a tag such as `v0.1.0`. GitHub Actions runs GoReleaser,
+which builds the archives for each platform and sets the version, commit
+and build date.
