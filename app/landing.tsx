@@ -131,7 +131,7 @@ export function Landing({ width }: { width: keyof typeof widths }) {
               $ flowctl pi run
             </a>
           </div>
-          <p className="mt-16 animate-rise text-[19px] font-medium tracking-[-0.4px] text-ink [animation-delay:240ms] motion-reduce:animate-none">
+          <p className="mt-16 animate-rise text-[19px] sm:mt-10 font-medium tracking-[-0.4px] text-ink [animation-delay:240ms] motion-reduce:animate-none">
             From harness session to the dashboards your team already uses.
           </p>
           <figure className="mt-5 animate-rise overflow-hidden rounded-xl border border-[#ededed] bg-paper p-2 [animation-delay:300ms] motion-reduce:animate-none sm:p-4">
