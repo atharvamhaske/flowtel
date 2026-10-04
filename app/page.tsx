@@ -1,18 +1,252 @@
-const mark = "font-semibold text-ink";
+const repo = "https://github.com/atharvamhaske/flowtel";
+
+const btn =
+  "group inline-flex items-center justify-center gap-2 border font-medium tracking-[-0.15px] transition-[transform,background-color,border-color] duration-150 ease-out active:scale-[0.97] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:active:scale-100 shadow-[inset_0_2px_1px_#ffffff40,inset_0_-3px_1px_#00000018,0_0_0_4px_#23232308,0_2px_3px_#17213a20,0_5px_10px_#17213a12] active:shadow-[inset_0_1px_3px_#00000024,inset_0_-1px_0_#ffffff20,0_0_0_4px_#23232308,0_1px_2px_#17213a12]";
+const lg = "min-h-12 rounded-xl px-[18px] py-3 text-[14px]";
+const primary = `${btn} border-accent-dark bg-accent text-paper hover:bg-[#d9520b]`;
+const secondary = `${btn} border-[#c7c7c7] bg-[#f3f3f3] text-[#484848] hover:border-[#bdbdbd] hover:bg-[#eaeaea]`;
+
+const kicker = "mb-[19px] text-[10px] uppercase leading-normal tracking-[0.08em] text-[#646464]";
+const h2 = "mb-5 text-[27px] font-medium leading-[1.2] tracking-[-1.3px] sm:text-[34px]";
+const body = "leading-[1.8] text-muted";
+const section = "scroll-mt-5 border-t border-line px-5 py-10 sm:px-11 sm:py-[60px]";
+
+const features = [
+  {
+    tag: "01",
+    title: "Harness-layer traces",
+    copy: "One trace per session, parented exactly the way the harness ran it: session, llm, tool, permission.",
+  },
+  {
+    tag: "02",
+    title: "Permission spans",
+    copy: "When a harness asks to run something, the allow or deny decision, and who made it, lands in the trace.",
+  },
+  {
+    tag: "03",
+    title: "Plain OTLP out",
+    copy: "OpenInference and OTel GenAI attributes on the same spans. No SDK, no proprietary fields, no raw payloads by default.",
+  },
+];
+
+const compareRows = [
+  { cap: "Layer it lives at", cells: ["Harness runtime", "App / SDK", "App / SDK", "App / SDK", "App / SDK"] },
+  { cap: "Tool calls + permission decisions", cells: ["yes", "-", "-", "-", "-"] },
+  { cap: "Vendor-neutral OTLP, no SDK", cells: ["yes", "-", "-", "-", "-"] },
+  { cap: "Raw payloads off by default", cells: ["yes", "-", "-", "-", "-"] },
+  { cap: "Evals, scoring, judges", cells: ["no, by design", "yes", "yes", "yes", "yes"] },
+  { cap: "Works as a flowtel backend", cells: ["-", "yes", "yes", "yes", "yes"] },
+];
+const compareCols = ["Flowtel", "Braintrust", "Laminar", "Phoenix", "LangSmith"];
+
+const footerCols = [
+  {
+    title: "Project",
+    links: [
+      { label: "GitHub", href: repo },
+      { label: "SPEC.md", href: `${repo}/blob/main/SPEC.md` },
+      { label: "Releases", href: `${repo}/releases` },
+    ],
+  },
+  {
+    title: "Standards",
+    links: [
+      { label: "OpenTelemetry", href: "https://opentelemetry.io" },
+      { label: "OpenInference", href: "https://github.com/Arize-ai/openinference" },
+      { label: "GenAI semconv", href: "https://opentelemetry.io/docs/specs/semconv/gen-ai/" },
+    ],
+  },
+];
+
+function Arrow() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+      className="transition-transform duration-150 ease-out group-hover:translate-x-[3px] motion-reduce:transition-none"
+    >
+      <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Brand() {
+  return (
+    <a href="#" className="flex items-center gap-1.5 text-[#111]">
+      <img src="/flowtel-mark.png" alt="" className="h-6 w-auto" />
+      <span className="font-display text-[21px] tracking-[-0.8px] sm:text-[23px]">flowtel</span>
+    </a>
+  );
+}
+
+const link = "transition-colors duration-150 hover:text-accent hover:underline hover:underline-offset-4";
 
 export default function Home() {
   return (
-    <main className="grain min-h-dvh overflow-x-hidden overflow-y-auto bg-white px-4 py-5 text-ink sm:px-7 sm:py-7 md:px-10 md:py-8">
-      <div className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[720px] flex-col sm:min-h-[calc(100dvh-56px)] md:min-h-[calc(100dvh-64px)]">
-        <header className="mb-8 flex items-start justify-between gap-4 sm:mb-10 sm:gap-8 md:mb-12">
-          <img src="/flowtelwhite.png" alt="Flowtel" className="h-auto w-[116px] object-contain sm:w-[148px] md:w-[164px]" />
-          <nav className="pt-1 text-right text-[10px] leading-4 text-black/60 sm:pt-2 sm:text-xs sm:leading-5 md:text-sm md:leading-6"><a className="transition-colors hover:text-orange" href="https://github.com/atharvamhaske/flowtel">github</a><span className="px-1.5 sm:px-2">·</span><a className="transition-colors hover:text-orange" href="https://x.com/atharvaxdevs">x / @atharvaxdevs</a></nav>
+    <main className="min-h-dvh px-3 text-[16px] leading-[1.65] sm:px-8">
+      <div className="mx-auto max-w-[800px] border-x border-line bg-paper">
+        <header className="flex h-16 items-center justify-between gap-5 border-b border-[#ededed] px-5 sm:h-[72px] sm:px-11">
+          <Brand />
+          <nav className="flex items-center gap-3 text-[13px] tracking-[-0.2px] sm:gap-6">
+            <a className={`${link} hidden sm:block`} href="#features">features</a>
+            <a className={`${link} hidden sm:block`} href="#run">run</a>
+            <a className={`${link} hidden sm:block`} href="#compare">compare</a>
+            <a className={`${primary} min-h-10 rounded-lg px-3 py-2 text-[13px]`} href={repo}>
+              GitHub <Arrow />
+            </a>
+          </nav>
         </header>
-        <section className="flex flex-1 flex-col items-center justify-start py-3 text-center sm:py-5 md:py-7">
-          <h1 className="max-w-[660px] font-sans text-[clamp(2.75rem,8vw,5.5rem)] font-semibold leading-[.92] tracking-[-.065em] sm:text-[clamp(3.5rem,7vw,5.5rem)]">make agent work <span className="text-orange">legible.</span></h1>
-          <p className="mt-6 max-w-[430px] text-[14px] leading-5 text-black/60 sm:mt-8 sm:text-[16px] sm:leading-6 md:mt-9 md:text-[18px] md:leading-7">Open telemetry for the part of AI work that happens after the model answers.</p>
-          <div className="mt-7 max-w-[680px] space-y-0 text-left sm:mt-9 md:mt-10"><p className="text-justify text-[13px] leading-5 text-black/75 sm:text-[14px] sm:leading-6 md:text-[15px] md:leading-6">I built Flowtel because a model trace is only the middle of the story. It can tell you a request reached <span className={mark}>OpenAI, Anthropic, or vLLM</span>. It cannot tell you what the coding agent was doing around it, which repository it touched, which shell or file tool it called, or whether someone let it continue.</p><p className="text-justify text-[13px] leading-5 text-black/75 sm:text-[14px] sm:leading-6 md:text-[15px] md:leading-6">Flowtel sits at the <span className={mark}>harness layer</span>: Pi first, then Claude Code, OpenCode, OMP, and other agents as small adapters that are easy to test and replace. It turns sessions, turns, branches, model activity, tool calls, and <span className="font-semibold text-orange">permission decisions</span> into one vendor-neutral OpenTelemetry shape, with <span className={mark}>OpenInference and OTel GenAI</span> semantics on the same spans and bounded audit logs beside them.</p><p className="text-justify text-[13px] leading-5 text-black/75 sm:text-[14px] sm:leading-6 md:text-[15px] md:leading-6">Send those traces to Phoenix, Braintrust, or Laminar and the logs to Greptime or Parseable without rebuilding your instrumentation for every backend. This is for the team that needs a receipt when an agent changes code, and for the developer who wants to understand a messy session without sending every prompt and tool payload to a vendor. The harness makes the policy decision; <span className={mark}>Flowtel records what happened.</span> I am building it in the open, starting with Pi and a stable schema. If your agents work in real repositories, this is the piece I want to make <span className="font-semibold text-orange">boring, portable, and easy to trust.</span></p></div>
+
+        {/* Hero */}
+        <section className="px-5 pb-10 pt-12 text-center sm:px-11 sm:pb-16 sm:pt-[76px]">
+          <p className={`${kicker} mb-3 animate-rise motion-reduce:animate-none`}>agent session to OTLP</p>
+          <h1 className="mx-auto mb-4 max-w-[14ch] animate-rise font-display text-[clamp(36px,9vw,58px)] leading-[1.1] tracking-[-2px] [animation-delay:60ms] motion-reduce:animate-none">
+            make agent work{" "}
+            <span className="bg-[linear-gradient(#f8c5aa,#f8c5aa)] bg-[length:100%_72%] bg-[position:left_72%] bg-no-repeat [box-decoration-break:clone]">
+              legible.
+            </span>
+          </h1>
+          <p className="mx-auto mb-7 max-w-[52ch] animate-rise text-[15px] leading-[1.8] text-muted [animation-delay:120ms] [text-wrap:pretty] motion-reduce:animate-none sm:text-[17px]">
+            Open telemetry for what happens after the model answers. Flowtel turns coding-harness sessions into vendor-neutral
+            OpenTelemetry: turns, model calls, tool calls and permission decisions.
+          </p>
+          <div className="mx-auto grid max-w-[440px] animate-rise gap-2.5 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center [animation-delay:180ms] motion-reduce:animate-none">
+            <a className={`${primary} ${lg}`} href={repo}>
+              Star on GitHub <Arrow />
+            </a>
+            <a className={`${secondary} min-h-12 rounded-xl px-[18px] py-3 font-mono text-[13px]`} href="#run">
+              $ flowctl pi run
+            </a>
+          </div>
+          <div className="mt-6 flex animate-rise flex-wrap justify-center gap-x-5 gap-y-2 text-[12px] text-[#767676] [animation-delay:240ms] motion-reduce:animate-none">
+            <span>no SDK dependency</span>
+            <span>no proprietary attributes</span>
+            <span>no raw payloads by default</span>
+          </div>
+          <figure className="mt-12 animate-rise overflow-hidden rounded-xl border border-[#ededed] bg-paper p-2 [animation-delay:300ms] motion-reduce:animate-none sm:p-4">
+            <img src="/flowtel.svg" alt="Flowtel architecture: harness sessions exported as OTLP traces, metrics and logs" width={2000} height={1137} className="h-auto w-full" />
+          </figure>
         </section>
+
+        {/* Features */}
+        <section id="features" className={section}>
+          <div className="max-w-[600px]">
+            <p className={kicker}>Signals</p>
+            <h2 className={h2}>Everything the harness did, as first-class telemetry.</h2>
+            <p className={`${body} max-w-[500px]`}>
+              Flowtel wraps the agent runtime instead of the model API, so it sees the repository work a model trace never shows.
+            </p>
+          </div>
+          <div className="mt-8 grid gap-6 sm:mt-[42px] sm:grid-cols-3 sm:gap-[30px]">
+            {features.map((f) => (
+              <article key={f.title} className="border-t border-line pt-6">
+                <span className="font-mono text-[11px] text-accent">{f.tag}</span>
+                <h3 className="mb-2.5 mt-3 text-[17px] font-semibold tracking-[-0.3px]">{f.title}</h3>
+                <p className={`${body} text-[14px]`}>{f.copy}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* Run */}
+        <section id="run" className={`${section} grid items-center gap-6 bg-[#fcfcfc] sm:grid-cols-[1fr_1.15fr] sm:gap-11`}>
+          <div>
+            <p className={kicker}>Your harness. Your collector.</p>
+            <h2 className={h2}>Pi today. Small adapters, easy to add.</h2>
+            <p className={`${body} mb-5 text-[14px]`}>
+              Point flowtel at any OTLP endpoint. Claude Code, opencode and omp adapters are planned.
+            </p>
+            <a className="inline-flex items-center gap-1.5 text-[13px] font-medium text-accent hover:underline hover:underline-offset-4" href={`${repo}/blob/main/ONBOARDING.md`}>
+              Read the onboarding guide <Arrow />
+            </a>
+          </div>
+          <div className="min-w-0 overflow-hidden rounded-lg border border-[#dedede] bg-paper">
+            <div className="border-b border-line px-4 py-3 text-[12px] text-faint">terminal</div>
+            <pre className="overflow-x-auto px-5 py-6 font-mono text-[12px] leading-[2.1] text-muted">
+              <code>
+                <span className="text-accent">FLOWTEL_OTLP_ENDPOINT</span>=http://collector:4318{"\n"}
+                <span className="text-accent">FLOWTEL_ATTRIBUTE_PROFILE</span>=both{"\n"}
+                <span className="text-accent">FLOWTEL_TAGS</span>=team=platform,env=ci{"\n"}
+                <span className="text-ink">$ flowctl pi run</span>
+              </code>
+            </pre>
+          </div>
+        </section>
+
+        {/* Compare */}
+        <section id="compare" className={section}>
+          <div className="max-w-[600px]">
+            <p className={kicker}>Compare</p>
+            <h2 className={h2}>Not a platform. It feeds them.</h2>
+            <p className={`${body} max-w-[500px]`}>
+              Eval platforms live at the app layer. Flowtel lives at the harness layer and exports plain OTLP, so every product below
+              is a destination, not a competitor.
+            </p>
+          </div>
+          <div className="mt-8 overflow-x-auto rounded-lg border border-line">
+            <table className="w-full min-w-[620px] border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-line bg-[#fcfcfc]">
+                  <th className="px-4 py-3 text-[12px] font-normal text-faint">Capability</th>
+                  {compareCols.map((col, i) => (
+                    <th key={col} className={`px-4 py-3 font-medium ${i === 0 ? "text-accent" : "text-ink"}`}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {compareRows.map((row) => (
+                  <tr key={row.cap} className="border-b border-line last:border-0">
+                    <td className="px-4 py-3 text-muted">{row.cap}</td>
+                    {row.cells.map((cell, i) => (
+                      <td
+                        key={i}
+                        className={`px-4 py-3 font-mono text-[12px] ${cell === "yes" && i === 0 ? "text-accent" : cell === "-" ? "text-[#c7c7c7]" : "text-ink"}`}
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="border-t border-line px-5 pb-5 pt-8 sm:px-11 sm:pb-7 sm:pt-12">
+          <div className="flex flex-col justify-between gap-6 sm:flex-row sm:gap-10">
+            <div>
+              <p className="mb-3 text-[22px] font-medium leading-[1.3] tracking-[-0.6px] sm:text-[24px]">
+                Boring, portable, easy to trust.
+              </p>
+              <p className="text-[14px] leading-[1.6] text-muted">Vendor-neutral telemetry for coding-agent harnesses.</p>
+            </div>
+            <nav className="flex gap-16">
+              {footerCols.map((col) => (
+                <div key={col.title} className="flex flex-col items-start">
+                  <span className="mb-2 text-[12px] text-faint">{col.title}</span>
+                  {col.links.map((l) => (
+                    <a key={l.label} className={`${link} inline-flex min-h-9 items-center text-[13px]`} href={l.href}>
+                      {l.label}
+                    </a>
+                  ))}
+                </div>
+              ))}
+            </nav>
+          </div>
+          <div className="select-none whitespace-nowrap pb-7 pt-16 text-center font-display text-[clamp(56px,17vw,136px)] leading-[1.15] tracking-[-0.055em] sm:pb-9 sm:pt-24">
+            flowtel<span className="text-accent">.</span>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#23232314] pt-6 text-[12px] text-[#6b6b6b]">
+            <span>MIT licensed, built in the open</span>
+            <a className={link} href="https://x.com/atharvaxdevs">x / @atharvaxdevs</a>
+          </div>
+        </footer>
       </div>
     </main>
   );
